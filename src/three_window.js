@@ -2,11 +2,16 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 /**
+ * General Variables
+ */
+let tissueImage = '../data/image.png'
+let SpotPositionsPath = '../data/SpotPositions.csv'
+
+/**
  * Scene Setup
  */
-
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 5000);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 50000);
 const renderer = new THREE.WebGLRenderer();
 const container = document.getElementById('three-container');
 renderer.setSize(container.clientWidth, container.clientHeight);
@@ -20,10 +25,14 @@ let isRightMouseDown = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
+let rotateFactor = 0.005
+let moveFactor = 5
+let zoomFactor = 1.5
 /**
  * Camera initialization and camera reset Function
  */
-const initialCameraPosition = {x:0,y:0,z:10}
+const initialCameraPosition = {x:9000,y:9000,z:10000}
+
 camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
 const resetCamera = () => {
     camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
@@ -45,6 +54,7 @@ container.addEventListener('mouseup', (event) => {
     if (event.button === 2) isRightMouseDown = false;
 });
 
+
 container.addEventListener('mousemove', (event) => {
     const deltaX = event.clientX - lastMouseX;
     const deltaY = event.clientY - lastMouseY;
@@ -52,17 +62,17 @@ container.addEventListener('mousemove', (event) => {
     lastMouseY = event.clientY;
 
     if (isLeftMouseDown) {
-        camera.rotation.y -= deltaX * 0.005;
-        camera.rotation.x -= deltaY * 0.005;
+        camera.rotation.y -= deltaX * rotateFactor;
+        camera.rotation.x -= deltaY * rotateFactor;
     }
     if (isRightMouseDown) {
-        camera.position.x -= deltaX * 0.01;
-        camera.position.y += deltaY * 0.01;
+        camera.position.x -= deltaX * moveFactor;
+        camera.position.y += deltaY * moveFactor;
     }
 });
 
 container.addEventListener('wheel', (event) => {
-    camera.position.z += event.deltaY * 0.01;
+    camera.position.z += event.deltaY * zoomFactor;
 });
 
 container.addEventListener('contextmenu', (event) => event.preventDefault());
@@ -82,65 +92,42 @@ textureLoader.load('./src/image.png', function (texture) {
 /**
  * Honeycomb Grid Setup
  */
-const discRadius = 0.5;
-const discHeight = 0.1;
-const numRows = 3;
-const numCols = 10;
-const xSpacing = discRadius * 2 * 0.95;
-const ySpacing = discRadius * 1.65;
-const xOffset = discRadius;
 const discs = [];
-
 /**
- * Function to Modify a Disc into a Pie Chart
+ * Create Honeycomb Grid by using the info read from the given csv file
  */
-const togglePieDisc = (index, colors, portions) => {
-    if (index < 0 || index >= discs.length) return;
-    
-    const oldDisc = discs[index];
-    scene.remove(oldDisc);
-    
-    const group = new THREE.Group();
-    let startAngle = 0;
-    for (let i = 0; i < colors.length; i++) {
-        const segmentAngle = Math.PI * 2 * portions[i];
-        const shape = new THREE.Shape();
-        shape.moveTo(0, 0);
-        shape.absarc(0, 0, discRadius, startAngle, startAngle + segmentAngle, false);
-        shape.lineTo(0, 0);
-        const geometry = new THREE.ShapeGeometry(shape);
-        const material = new THREE.MeshBasicMaterial({ color: colors[i], side: THREE.DoubleSide, transparent: true });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.z = Math.PI;
-        group.add(mesh);
-        startAngle += segmentAngle;
-    }
-    
-    group.position.copy(oldDisc.position);
-    scene.add(group);
-    discs[index] = group;
-};
+async function createDiscsFromCSV(csvFilePath, numLines) {
+    const response = await fetch(csvFilePath);
+    const text = await response.text();
+    const rows = text.split('\n').slice(1, numLines + 1); // Skip header and take numLines
 
-/**
- * Create Honeycomb Grid
- */
-const discMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc, side: THREE.DoubleSide, transparent: true });
-const discGeometry = new THREE.CylinderGeometry(discRadius, discRadius, discHeight, 32);
-for (let row = 0; row < numRows; row++) {
-    for (let col = 0; col < numCols; col++) {
+    const discMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc, side: THREE.DoubleSide, transparent: true });
+
+    //const discs = [];
+    
+    rows.forEach(row => {
+        const [barcode, x, y, radius] = row.split(',').map(value => value.trim());
+
+        // Create disc geometry and material
+        const discGeometry = new THREE.CylinderGeometry(parseFloat(radius), parseFloat(radius), 0.1, 32);
         const disc = new THREE.Mesh(discGeometry, discMaterial.clone());
+
+        // Rotate and position the disc
         disc.rotation.x = Math.PI / 2;
-        
-        let x = col * xSpacing;
-        let y = row * ySpacing;
-        if (row % 2 === 1) {
-            x += xOffset;
-        }
-        disc.position.set(x, y, 0);
+        disc.position.set(parseFloat(x), parseFloat(y), 0);
+
+        // Assign the barcode as an ID to the disc
+        disc.userData.id = barcode; 
+
+        // Add the disc to the scene and array
         scene.add(disc);
         discs.push(disc);
-    }
+    });
+
+    return discs;
 }
+
+
 
 /**
  * Animation Loop
@@ -172,7 +159,69 @@ opacitySlider.addEventListener('input', (event) => {
     });
 });
 
-// Example: Convert disc at index 9 into a pie chart
-togglePieDisc(9, [0xff0000, 0x00ff00, 0x0000ff], [0.2, 0.4, 0.4]);
+/**
+ * Function to Modify a Disc into a Pie Chart
+ */
+const colorPieDisc = (index, colors, portions) => {
+    if (index < 0 || index >= discs.length) {
+        console.error(`colorPieDisc: Invalid index ${index}, discs length: ${discs.length}`);
+        return;
+    }
 
-// Test message
+    const oldDisc = discs[index];
+
+    // Extract radius from old disc geometry
+    let oldRadius = 0.5; // Default value in case of error
+    if (oldDisc.geometry && oldDisc.geometry.parameters) {
+        oldRadius = oldDisc.geometry.parameters.radiusTop || 0.5;
+    }
+
+    // Remove old disc
+    scene.remove(oldDisc);
+    
+    // Create new pie chart using old disc size
+    const group = new THREE.Group();
+    let startAngle = 0;
+    for (let i = 0; i < colors.length; i++) {
+        const segmentAngle = Math.PI * 2 * portions[i];
+        const shape = new THREE.Shape();
+        shape.moveTo(0, 0);
+        shape.absarc(0, 0, oldRadius, startAngle, startAngle + segmentAngle, false);
+        shape.lineTo(0, 0);
+        const geometry = new THREE.ShapeGeometry(shape);
+        const material = new THREE.MeshBasicMaterial({ color: colors[i], side: THREE.DoubleSide, transparent: false });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.z = Math.PI;
+        group.add(mesh);
+        startAngle += segmentAngle;
+    }
+
+    // Preserve position of the old disc
+    group.position.copy(oldDisc.position);
+
+    // Add to scene
+    scene.add(group);
+    discs[index] = group;
+};
+
+/**
+ * Function to find a specific cell disc by id (the barcode of genes).
+ */
+const findDiscById = (barcode) => {
+    return scene.children.find(disc => disc.userData.id === barcode);
+};
+
+/**
+ * Initialization function.
+ */
+async function init() {
+    console.log("Waiting for initialization..");
+    await createDiscsFromCSV(SpotPositionsPath, 3499);
+    console.log("Initialization done.");
+}
+
+// Call the async function
+await init();
+
+// Example: Convert disc at index into a colored pie chart
+colorPieDisc(5, [0xff0000, 0x00ff00, 0x0000ff], [0.2, 0.4, 0.4]);
