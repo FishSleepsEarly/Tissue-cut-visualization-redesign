@@ -28,9 +28,11 @@ project-root/
 │
 ├── public/
 │   ├── styles.css
+│   ├── data/
+│      ├──image.png
+│      ├──SpotPositions.csv
 │
 └── src/
-    ├── image.png
     ├── three_window.js
     ├── vtk_window_base.js
     ├── vtk_window_piesliced.js
@@ -41,9 +43,10 @@ project-root/
 - **`package.json`** – Contains project dependencies and scripts.
 - **`vite.config.js`** – Configuration file for Vite.
   
-- **`public/styles.css`** – Global stylesheet for the project.
-  
-- **`src/image.png`** – The tissue cut image.
+- **`public/styles.css`** – Global stylesheet for the project.  
+- **`public/data/image.png`** – The tissue cut image.
+- **`public/data/SpotPositions.csv`** – The csv file that contains the coordinates of all cell spots.
+- 
 - **`src/three_window.js`** – The 3D visiualization window code based on three.js.
 - **`src/vtk_window.js`** – Legacy code, ignore it.
 - **`src/vtk_window_base.js`** – Legacy code, ignore it.
