@@ -37,10 +37,14 @@ project-root/
     ├── vtk_window.js
 ```
 
-- **`index.html`** – Main entry point of the web application.
+- **`index.html`** – Vite will use this html file as the main entry point of the web application.
 - **`package.json`** – Contains project dependencies and scripts.
 - **`vite.config.js`** – Configuration file for Vite.
+  
 - **`public/styles.css`** – Global stylesheet for the project.
-- **`src/`** – Contains source code and assets for the application.
-
-This structure helps keep the project organized and easy to maintain.
+  
+- **`src/image.png`** – The tissue cut image.
+- **`src/three_window.js`** – The 3D visiualization window code based on three.js.
+- **`src/vtk_window.js`** – Legacy code, ignore it.
+- **`src/vtk_window_base.js`** – Legacy code, ignore it.
+- **`src/vtk_window_piesliced.js`** – Legacy code, ignore it.
