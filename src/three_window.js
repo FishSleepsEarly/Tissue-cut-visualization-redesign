@@ -6,6 +6,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  */
 let tissueImage = '../data/image.png'
 let SpotPositionsPath = '../data/SpotPositions.csv'
+const discs = [];
+let tissueImageMesh;
 
 /**
  * Scene Setup
@@ -78,56 +80,68 @@ container.addEventListener('wheel', (event) => {
 container.addEventListener('contextmenu', (event) => event.preventDefault());
 
 /**
- * Background Image
+ * Function to Load and Display an Image with Adjustable Position and Size
  */
-const textureLoader = new THREE.TextureLoader();
-textureLoader.load('./src/image.png', function (texture) {
-    const planeGeometry = new THREE.PlaneGeometry(4, 4);
-    const planeMaterial = new THREE.MeshBasicMaterial({ map: texture });
-    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-    plane.position.set(0, 0, 0);
-    scene.add(plane);
-});
+function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z: 0 }) {
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(imagePath, function (texture) {
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.y = -1; 
 
-/**
- * Honeycomb Grid Setup
- */
-const discs = [];
+        const planeGeometry = new THREE.PlaneGeometry(width, height);
+        const planeMaterial = new THREE.MeshBasicMaterial({ 
+            map: texture, 
+            transparent: true,  // Ensures material supports transparency
+            opacity: 1.0,       // Start at full opacity
+        }); 
+
+        tissueImageMesh = new THREE.Mesh(planeGeometry, planeMaterial);
+        tissueImageMesh.position.set(position.x, position.y, position.z);
+        scene.add(tissueImageMesh);
+    });
+}
+
+
+
+
 /**
  * Create Honeycomb Grid by using the info read from the given csv file
  */
 async function createDiscsFromCSV(csvFilePath, numLines) {
     const response = await fetch(csvFilePath);
     const text = await response.text();
-    const rows = text.split('\n').slice(1, numLines + 1); // Skip header and take numLines
+    const rows = text.split('\n').slice(1); // Skip the header
 
     const discMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc, side: THREE.DoubleSide, transparent: true });
 
-    //const discs = [];
-    
-    rows.forEach(row => {
+    let validRows = rows.filter(row => {
+        const values = row.split(',').map(value => value.trim());
+        return values.length >= 4 && !isNaN(parseFloat(values[1])) && !isNaN(parseFloat(values[2])) && !isNaN(parseFloat(values[3]));
+    });
+
+    if (numLines > validRows.length) {
+        console.warn(`Requested ${numLines} lines, but only ${validRows.length} contain valid data. Using ${validRows.length} lines.`);
+        numLines = validRows.length;
+    }
+
+    validRows.slice(0, numLines).forEach(row => {
         const [barcode, x, y, radius] = row.split(',').map(value => value.trim());
 
-        // Create disc geometry and material
         const discGeometry = new THREE.CylinderGeometry(parseFloat(radius), parseFloat(radius), 0.1, 32);
         const disc = new THREE.Mesh(discGeometry, discMaterial.clone());
 
-        // Rotate and position the disc
         disc.rotation.x = Math.PI / 2;
         disc.position.set(parseFloat(x), parseFloat(y), 0);
 
-        // Assign the barcode as an ID to the disc
-        disc.userData.id = barcode; 
+        disc.userData.id = barcode;
 
-        // Add the disc to the scene and array
         scene.add(disc);
         discs.push(disc);
     });
 
     return discs;
 }
-
-
 
 /**
  * Animation Loop
@@ -141,8 +155,9 @@ animate();
 /**
  * Opacity Control
  */
-const opacitySlider = document.getElementById('opacity-slider');
-opacitySlider.addEventListener('input', (event) => {
+// Cells Opacity Control
+const cellsOpacitySlider = document.getElementById('cells-opacity-slider');
+cellsOpacitySlider.addEventListener('input', (event) => {
     const opacity = parseFloat(event.target.value);
     discs.forEach(disc => {
         if (disc.material) {
@@ -159,8 +174,19 @@ opacitySlider.addEventListener('input', (event) => {
     });
 });
 
+// Image Opacity Control
+const imageOpacitySlider = document.getElementById('image-opacity-slider');
+imageOpacitySlider.addEventListener('input', (event) => {
+    const opacity = parseFloat(event.target.value);
+    if (tissueImageMesh && tissueImageMesh.material) {
+        tissueImageMesh.material.opacity = opacity;
+        tissueImageMesh.material.transparent = true;
+    }
+});
+
+
 /**
- * Function to Modify a Disc into a Pie Chart
+ * Function to Modify a Disc into a colored Pie.
  */
 const colorPieDisc = (index, colors, portions) => {
     if (index < 0 || index >= discs.length) {
@@ -212,12 +238,71 @@ const findDiscById = (barcode) => {
 };
 
 /**
+ * Function to align the image and cells.
+ */
+async function loadImageWithAlignment(imagePath, spotCSVPath) {
+    // Load spot positions
+    const response = await fetch(spotCSVPath);
+    const text = await response.text();
+    const rows = text.split('\n').slice(1); // Skip header
+
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    
+    rows.forEach(row => {
+        const values = row.split(',').map(value => value.trim());
+        if (values.length >= 4) {
+            let x = parseFloat(values[1]);
+            let y = parseFloat(values[2]);
+            if (!isNaN(x) && !isNaN(y)) {
+                minX = Math.min(minX, x);
+                maxX = Math.max(maxX, x);
+                minY = Math.min(minY, y);
+                maxY = Math.max(maxY, y);
+            }
+        }
+    });
+
+    const width = maxX - minX;  // Image width should match spot distribution width
+    const height = maxY - minY; // Image height should match spot distribution height
+    const position = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: -1 }; // Center it below plots
+    console.log("Loading image with:");
+    console.log("Width:", width);
+    console.log("Height:", height);
+    console.log("Position:", position);
+
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(imagePath, function (texture) {
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.y = -1; // Flip the image vertically
+
+        const planeGeometry = new THREE.PlaneGeometry(width, height);
+        const planeMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 0.8 });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.position.set(position.x, position.y, position.z);
+        scene.add(plane);
+    });
+}
+
+
+/**
  * Initialization function.
  */
 async function init() {
     console.log("Waiting for initialization..");
-    await createDiscsFromCSV(SpotPositionsPath, 3499);
+
+    console.log("Creating cell plots..");
+    await createDiscsFromCSV(SpotPositionsPath, 3500);
+    console.log("Cell plots created.");
+
+    console.log("Loading tissue cut image..");
+    // w=13913, h=14289, { x: 8495.5, y: 8801.5, z: -1 }
+    loadImage(tissueImage, 13913, 14289, { x: 8495.5, y: 8801.5, z: -1 });
+    //loadImageWithAlignment(tissueImage, SpotPositionsPath);
+    console.log("Tissue cut image loaded."); 
+
     console.log("Initialization done.");
+
 }
 
 // Call the async function
@@ -225,3 +310,4 @@ await init();
 
 // Example: Convert disc at index into a colored pie chart
 colorPieDisc(5, [0xff0000, 0x00ff00, 0x0000ff], [0.2, 0.4, 0.4]);
+
