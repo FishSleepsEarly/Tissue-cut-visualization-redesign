@@ -2,12 +2,38 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 /**
+ * Functionalities to implement:
+ * 
+ * 1. Zoom in level adjustment -- Done, by default feature of three.js
+ * 
+ * 2. Opacity adjustment --  Done, check 'Opacity Control' functions.
+ * 
+ * 3. Locating cells and genes -- TODO
+ *      - Put mouse on a cell, will show its corresponding coordinates and barcode -- Done, but quality might need improvement. Check 'Load cell info when mouse hover over each disc/cell.' part.
+ *      - Select a point from bar graph, show corresponding cell set. -- TODO, example see slides P9
+ * 
+ * 4. Switch between gene sets -- TODO
+ * 
+ * 5. 2D->3D -- Done, check createDiscsFromCSV
+ * 
+ * 6. Clipping -- TODO
+ * 
+ * 7. Synchronously and colored gene viewing -- Partially Done
+ *      - Function to color specific cell -- Done
+ *      - Function to create multiple layers of cells so that we can show the same cell position in different colors. -- TODO
+ */
+
+
+/**
  * General Variables
  */
 let tissueImage = '../data/image.png'
 let SpotPositionsPath = '../data/SpotPositions.csv'
 const discs = [];
 let tissueImageMesh;
+const raycaster = new THREE.Raycaster();
+raycaster.params.Points = { threshold: 10 };
+const mouse = new THREE.Vector2();
 
 /**
  * Scene Setup
@@ -18,6 +44,7 @@ const renderer = new THREE.WebGLRenderer();
 const container = document.getElementById('three-container');
 renderer.setSize(container.clientWidth, container.clientHeight);
 container.appendChild(renderer.domElement);
+const singleInfoBox = document.getElementById('single-cell-info-box');
 
 /**
  * Camera Movement Variables
@@ -30,6 +57,7 @@ let lastMouseY = 0;
 let rotateFactor = 0.005
 let moveFactor = 5
 let zoomFactor = 1.5
+
 /**
  * Camera initialization and camera reset Function
  */
@@ -80,6 +108,32 @@ container.addEventListener('wheel', (event) => {
 container.addEventListener('contextmenu', (event) => event.preventDefault());
 
 /**
+ * Load cell info when mouse hover over each disc/cell.
+ */
+container.addEventListener('mousemove', (event) => {
+    raycaster.params.Mesh.threshold = 5; 
+    //raycaster.far = 10000;
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(discs, false);
+
+    if (intersects.length > 0) {
+        const disc = intersects[0].object;
+        const { x, y, z } = disc.position;
+        const barcode = disc.userData.id;
+
+        singleInfoBox.innerHTML = `Barcode: ${barcode} <br> X: ${x.toFixed(2)}, Y: ${y.toFixed(2)}, Z: ${z.toFixed(2)}`;
+        singleInfoBox.style.left = `${event.clientX + 10}px`;
+        singleInfoBox.style.top = `${event.clientY + 10}px`;
+        singleInfoBox.style.display = 'block';
+    } else {
+        singleInfoBox.style.display = 'none';
+    }
+});
+
+/**
  * Function to Load and Display an Image with Adjustable Position and Size
  */
 function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z: 0 }) {
@@ -103,17 +157,15 @@ function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z:
 }
 
 
-
-
 /**
- * Create Honeycomb Grid by using the info read from the given csv file
+ * Create clee plots/discs by using the info read from the given csv file
  */
 async function createDiscsFromCSV(csvFilePath, numLines) {
     const response = await fetch(csvFilePath);
     const text = await response.text();
     const rows = text.split('\n').slice(1); // Skip the header
 
-    const discMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc, side: THREE.DoubleSide, transparent: true });
+    const discMaterial = new THREE.MeshBasicMaterial({ color: 0x00008B, side: THREE.DoubleSide, transparent: true });
 
     let validRows = rows.filter(row => {
         const values = row.split(',').map(value => value.trim());
@@ -238,54 +290,6 @@ const findDiscById = (barcode) => {
 };
 
 /**
- * Function to align the image and cells.
- */
-async function loadImageWithAlignment(imagePath, spotCSVPath) {
-    // Load spot positions
-    const response = await fetch(spotCSVPath);
-    const text = await response.text();
-    const rows = text.split('\n').slice(1); // Skip header
-
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    
-    rows.forEach(row => {
-        const values = row.split(',').map(value => value.trim());
-        if (values.length >= 4) {
-            let x = parseFloat(values[1]);
-            let y = parseFloat(values[2]);
-            if (!isNaN(x) && !isNaN(y)) {
-                minX = Math.min(minX, x);
-                maxX = Math.max(maxX, x);
-                minY = Math.min(minY, y);
-                maxY = Math.max(maxY, y);
-            }
-        }
-    });
-
-    const width = maxX - minX;  // Image width should match spot distribution width
-    const height = maxY - minY; // Image height should match spot distribution height
-    const position = { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: -1 }; // Center it below plots
-    console.log("Loading image with:");
-    console.log("Width:", width);
-    console.log("Height:", height);
-    console.log("Position:", position);
-
-    const textureLoader = new THREE.TextureLoader();
-    textureLoader.load(imagePath, function (texture) {
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.y = -1; // Flip the image vertically
-
-        const planeGeometry = new THREE.PlaneGeometry(width, height);
-        const planeMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity: 0.8 });
-        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
-        plane.position.set(position.x, position.y, position.z);
-        scene.add(plane);
-    });
-}
-
-
-/**
  * Initialization function.
  */
 async function init() {
@@ -296,8 +300,8 @@ async function init() {
     console.log("Cell plots created.");
 
     console.log("Loading tissue cut image..");
-    // w=13913, h=14289, { x: 8495.5, y: 8801.5, z: -1 }
-    loadImage(tissueImage, 13913, 14289, { x: 8495.5, y: 8801.5, z: -1 });
+    // loadImage(tissueImage, 17039.5, 17500, { x: 8495.5, y: 8601.5, z: -1 });
+    loadImage(tissueImage, 17039.5, 17500, { x: 8495.5, y: 8601.5, z: -10 });
     //loadImageWithAlignment(tissueImage, SpotPositionsPath);
     console.log("Tissue cut image loaded."); 
 
