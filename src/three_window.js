@@ -12,7 +12,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  *      - Put mouse on a cell, will show its corresponding coordinates and barcode -- Done, but quality might need improvement. Check 'Load cell info when mouse hover over each disc/cell.' part.
  *      - Select a point from bar graph, show corresponding cell set. -- TODO, example see slides P9
  * 
- * 4. Switch between gene sets -- TODO
+ * 4. Switch between gene sets, so when select a gene set, its corredponding cells will be colored -- TODO
+ *      - Have create function (processGeneExpression) to color a gene set, but the algorithm calculating which cells to color seems have issue. The colored cells does not match the demo.
  * 
  * 5. 2D->3D -- Done, check createDiscsFromCSV
  * 
@@ -29,7 +30,11 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  */
 let tissueImage = '../data/image.png'
 let SpotPositionsPath = '../data/SpotPositions.csv'
+let ClusterGeneExpressionPath = '../data/ClusterGeneExpression.csv'
+let SpotClusterMembershipPath = '../data/SpotClusterMembership.csv'
 const discs = [];
+let geneExpressionData;
+let cellTypeData;
 let tissueImageMesh;
 const raycaster = new THREE.Raycaster();
 raycaster.params.Points = { threshold: 10 };
@@ -55,13 +60,14 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 
 let rotateFactor = 0.005
-let moveFactor = 5
+let moveFactor = 10
 let zoomFactor = 1.5
 
 /**
  * Camera initialization and camera reset Function
  */
-const initialCameraPosition = {x:9000,y:9000,z:10000}
+//const initialCameraPosition = {x:9000,y:9000,z:10000}
+const initialCameraPosition = {x:9000*0.07,y:9000*0.07,z:10000*0.07}
 
 camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
 const resetCamera = () => {
@@ -156,14 +162,132 @@ function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z:
     });
 }
 
+async function loadGeneExpressionData(csvFilePath) {
+    const response = await fetch(csvFilePath);
+    const text = await response.text();
+    const rows = text.split('\n');
+    
+    let headers = rows[0].split(',').map(h => h.trim().replace(/["']/g, '')); // Remove quotes
+    let geneExpressionData = {};
+    
+    for (let i = 1; i < rows.length; i++) {
+        let values = rows[i].split(',').map(v => v.trim());
+        let cellType = values[0].replace(/["']/g, ''); // Remove extra quotes from cell type names
+        
+        let expression = {};
+        for (let j = 1; j < headers.length; j++) {
+            expression[headers[j]] = parseFloat(values[j]) || 0;
+        }
+        geneExpressionData[cellType] = expression;
+    }
+
+    //console.log("Cleaned Gene Expression Data Sample:", Object.entries(geneExpressionData).slice(0, 5));
+    return geneExpressionData;
+}
+
+/**
+ * Function to load cell type proportions from SpotClusterMembership.csv
+ * Stores data in a dictionary where keys are spot IDs and values are cell type distributions.
+ */
+async function loadCellTypeMembership(csvFilePath) {
+    const response = await fetch(csvFilePath);
+    const text = await response.text();
+    const rows = text.split('\n');
+    
+    let headers = rows[0].split(',').map(h => h.trim().replace(/["']/g, '')); // Remove quotes
+    let cellTypeData = {};
+    
+    for (let i = 1; i < rows.length; i++) {
+        let values = rows[i].split(',').map(v => v.trim());
+        let barcode = values[0].replace(/["']/g, ''); // Remove extra quotes
+        
+        let membership = {};
+        for (let j = 1; j < headers.length; j++) {
+            membership[headers[j].replace(/["']/g, '')] = parseFloat(values[j]) || 0;
+        }
+        cellTypeData[barcode] = membership;
+    }
+
+    //console.log("Cleaned Cell Type Membership Sample:", Object.entries(cellTypeData).slice(0, 5));
+    return cellTypeData;
+}
+/**
+ * Function to compute gene expression per spatial spot
+ * geneExpressionData - Gene expression values for each cell type
+ * cellTypeData - Cell type composition for each spatial spot
+ * geneSet - List of genes to compute expression for
+ * returns Spot-wise total gene expression values
+ */
+function computeGeneExpressionPerSpot(geneExpressionData, cellTypeData, geneSet) {
+    let spotExpression = {};
+    
+    Object.keys(cellTypeData).forEach(barcode => {
+        let totalExpression = 0;
+        let cellTypes = cellTypeData[barcode];
+        
+        Object.keys(cellTypes).forEach(cellType => {
+            let proportion = cellTypes[cellType];
+            if (geneExpressionData[cellType]) {
+                geneSet.forEach(gene => {
+                    let geneValue = geneExpressionData[cellType][gene];
+                    if (geneValue === undefined) {
+                        console.warn(`Gene ${gene} not found for CellType ${cellType}`);
+                    }
+                    let contribution = proportion * (geneValue || 0);
+                    totalExpression += contribution;
+                    //console.log(`Barcode: ${barcode}, CellType: ${cellType}, Gene: ${gene}, Proportion: ${proportion.toFixed(6)}, Expression: ${(geneValue || 0).toFixed(6)}, Contribution: ${contribution.toFixed(6)}`);
+                });
+            } else {
+                console.warn(`CellType ${cellType} not found in Gene Expression Data`);
+            }
+        });
+
+        spotExpression[barcode] = parseFloat(totalExpression.toFixed(6)); // Keep more decimals
+    });
+
+    return spotExpression;
+}
+
+/**
+ * Function to color spots based on gene expression threshold
+ * expressionPerSpot - Computed gene expression per spot
+ * threshold - Minimum expression value required for coloring
+ */
+function colorSpotsByExpression(expressionPerSpot, threshold) {
+    Object.keys(expressionPerSpot).forEach((barcode) => {
+        const expressionValue = expressionPerSpot[barcode];
+        if (expressionValue > threshold) {
+            let discIndex = discs.findIndex(disc => disc.userData.id === barcode);
+            if (discIndex !== -1) {
+                colorPieDisc(discIndex, [0xff0000], [1.0]); // Fully red for spots above threshold
+            }
+        }
+    });
+}
+
+/**
+ * Color the gene set spots
+ */
+async function processGeneExpression() {
+    //const geneExpressionData = await loadGeneExpressionData('../data/ClusterGeneExpression.csv');
+    //const cellTypeData = await loadCellTypeMembership('../data/SpotClusterMembership.csv');
+    
+    let selectedGenes = ['0610005C13Rik']; // Example gene
+    let expressionPerSpot = computeGeneExpressionPerSpot(geneExpressionData, cellTypeData, selectedGenes);
+    
+    console.log(expressionPerSpot); // Output the computed expression for all spots
+    colorSpotsByExpression(expressionPerSpot, 0.002); // Color spots above threshold
+}
+
+
 
 /**
  * Create clee plots/discs by using the info read from the given csv file
  */
-async function createDiscsFromCSV(csvFilePath, numLines) {
+async function createDiscsFromCSV(csvFilePath, numLines, scaleFactor = 0.07) {
     const response = await fetch(csvFilePath);
     const text = await response.text();
-    const rows = text.split('\n').slice(1); // Skip the header
+    const rows = text.split('\n').slice(1);
 
     const discMaterial = new THREE.MeshBasicMaterial({ color: 0x00008B, side: THREE.DoubleSide, transparent: true });
 
@@ -180,11 +304,11 @@ async function createDiscsFromCSV(csvFilePath, numLines) {
     validRows.slice(0, numLines).forEach(row => {
         const [barcode, x, y, radius] = row.split(',').map(value => value.trim());
 
-        const discGeometry = new THREE.CylinderGeometry(parseFloat(radius), parseFloat(radius), 0.1, 32);
+        const discGeometry = new THREE.CylinderGeometry(parseFloat(radius) * scaleFactor, parseFloat(radius) * scaleFactor, 0.1, 32);
         const disc = new THREE.Mesh(discGeometry, discMaterial.clone());
 
         disc.rotation.x = Math.PI / 2;
-        disc.position.set(parseFloat(x), parseFloat(y), 0);
+        disc.position.set(parseFloat(x) * scaleFactor, parseFloat(y) * scaleFactor, 0);
 
         disc.userData.id = barcode;
 
@@ -301,9 +425,12 @@ async function init() {
 
     console.log("Loading tissue cut image..");
     // loadImage(tissueImage, 17039.5, 17500, { x: 8495.5, y: 8601.5, z: -1 });
-    loadImage(tissueImage, 17039.5, 17500, { x: 8495.5, y: 8601.5, z: -10 });
+    loadImage(tissueImage, 17039.5*0.07, 17500*0.07, { x: 8495.5*0.07, y: 8601.5*0.07, z: -10 });
     //loadImageWithAlignment(tissueImage, SpotPositionsPath);
     console.log("Tissue cut image loaded."); 
+
+    geneExpressionData = await loadGeneExpressionData('../data/ClusterGeneExpression.csv');
+    cellTypeData = await loadCellTypeMembership('../data/SpotClusterMembership.csv');
 
     console.log("Initialization done.");
 
@@ -313,5 +440,8 @@ async function init() {
 await init();
 
 // Example: Convert disc at index into a colored pie chart
-colorPieDisc(5, [0xff0000, 0x00ff00, 0x0000ff], [0.2, 0.4, 0.4]);
+//colorPieDisc(5, [0xff0000, 0x00ff00, 0x0000ff], [0.2, 0.4, 0.4]);
+
+// Run the process
+processGeneExpression();
 
