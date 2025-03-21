@@ -13,7 +13,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  *      - Select a point from bar graph, show corresponding cell set. -- TODO, example see slides P9
  * 
  * 4. Switch between gene sets, so when select a gene set, its corredponding cells will be colored -- TODO
- *      - Have create function (processGeneExpression) to color a gene set, but the algorithm calculating which cells to color seems have issue. The colored cells does not match the demo.
+ *      - Have created function (processGeneExpression) to color a gene set, but the calculated gene set seems have issue. The colored cells does not match the demo.
  * 
  * 5. 2D->3D -- Done, check createDiscsFromCSV
  * 
@@ -51,35 +51,70 @@ renderer.setSize(container.clientWidth, container.clientHeight);
 container.appendChild(renderer.domElement);
 const singleInfoBox = document.getElementById('single-cell-info-box');
 
+// set up the gene seletc menu
+const geneSearchInput = document.getElementById('gene-search');
+const geneSelect = document.getElementById('gene-select');
+
+const geneList = ["1700047M11Rik", "Zzz3"];
+function populateGeneDropdown(genes) {
+    geneSelect.innerHTML = ''; // Clear previous options
+    genes.forEach(gene => {
+        const option = document.createElement('option');
+        option.value = gene;
+        option.textContent = gene;
+        geneSelect.appendChild(option);
+    });
+}
+geneSearchInput.addEventListener('input', () => {
+    const query = geneSearchInput.value.toLowerCase();
+    const filteredGenes = geneList.filter(gene => gene.toLowerCase().includes(query));
+    populateGeneDropdown(filteredGenes);
+});
+geneSelect.addEventListener('change', () => {
+    const selectedGene = geneSelect.value;
+    if (selectedGene) {
+        processGeneExpression([selectedGene]); // Pass the selected gene
+    }
+});
+
+
+
 /**
- * Camera Movement Variables
+ * Mouse and Camera
  */
+
+//Camera Movement Variables
 let isLeftMouseDown = false;
 let isRightMouseDown = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
 let rotateFactor = 0.005
-let moveFactor = 10
-let zoomFactor = 1.5
+let moveFactor = 1
+let zoomFactor = 0.2
 
-/**
- * Camera initialization and camera reset Function
- */
+const minRotation = -Math.PI/4;
+const maxRotation = Math.PI/4;
+const minZoomZ = 10;
+const maxZoomZ = 700;
+const minPositionX = 100;
+const maxPositionX = 1200;
+const minPositionY = 0;
+const maxPositionY = 1200;
+
+//Camera initialization
 //const initialCameraPosition = {x:9000,y:9000,z:10000}
 const initialCameraPosition = {x:9000*0.07,y:9000*0.07,z:10000*0.07}
-
 camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
+
+//Camera reset
 const resetCamera = () => {
     camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
     camera.rotation.set(0, 0, 0);
 };
-
 document.getElementById('reset-camera').addEventListener('click', resetCamera);
 
-/**
- * Mouse Controls (Restrict to Three.js Window)
- */
+//Mouse Controls (Restrict to Three.js Window)
 container.addEventListener('mousedown', (event) => {
     if (event.button === 0) isLeftMouseDown = true;
     if (event.button === 2) isRightMouseDown = true;
@@ -90,7 +125,7 @@ container.addEventListener('mouseup', (event) => {
     if (event.button === 2) isRightMouseDown = false;
 });
 
-
+// Camera rotate and move
 container.addEventListener('mousemove', (event) => {
     const deltaX = event.clientX - lastMouseX;
     const deltaY = event.clientY - lastMouseY;
@@ -100,18 +135,49 @@ container.addEventListener('mousemove', (event) => {
     if (isLeftMouseDown) {
         camera.rotation.y -= deltaX * rotateFactor;
         camera.rotation.x -= deltaY * rotateFactor;
+
+        camera.rotation.x = Math.max(minRotation, Math.min(maxRotation, camera.rotation.x));
+        camera.rotation.y = Math.max(minRotation, Math.min(maxRotation, camera.rotation.y));
     }
     if (isRightMouseDown) {
         camera.position.x -= deltaX * moveFactor;
         camera.position.y += deltaY * moveFactor;
+
+        camera.position.x = Math.max(minPositionX, Math.min(maxPositionX, camera.position.x));
+        camera.position.y = Math.max(minPositionY, Math.min(maxPositionY, camera.position.y));
     }
 });
 
+// Camera zoom in
 container.addEventListener('wheel', (event) => {
     camera.position.z += event.deltaY * zoomFactor;
+    camera.position.z = Math.max(minZoomZ, Math.min(maxZoomZ, camera.position.z));
 });
 
 container.addEventListener('contextmenu', (event) => event.preventDefault());
+
+//Clipping
+const leftClipSlider = document.getElementById('left-clip-slider');
+const rightClipSlider = document.getElementById('right-clip-slider');
+
+// Function to clip based on X position
+function updateClipping() {
+    const leftLimit = parseFloat(leftClipSlider.value);
+    const rightLimit = parseFloat(rightClipSlider.value);
+
+    discs.forEach(disc => {
+        if (disc.position.x < leftLimit || disc.position.x > rightLimit) {
+            disc.visible = false;
+        } else {
+            disc.visible = true;
+        }
+    });
+
+    // Render the scene after updating
+    renderer.render(scene, camera);
+}
+leftClipSlider.addEventListener('input', updateClipping);
+rightClipSlider.addEventListener('input', updateClipping);
 
 /**
  * Load cell info when mouse hover over each disc/cell.
@@ -138,6 +204,7 @@ container.addEventListener('mousemove', (event) => {
         singleInfoBox.style.display = 'none';
     }
 });
+
 
 /**
  * Function to Load and Display an Image with Adjustable Position and Size
@@ -218,15 +285,19 @@ async function loadCellTypeMembership(csvFilePath) {
  * geneSet - List of genes to compute expression for
  * returns Spot-wise total gene expression values
  */
+
+//geneExpressionData = await loadGeneExpressionData('../data/ClusterGeneExpression.csv');
+//cellTypeData = await loadCellTypeMembership('../data/SpotClusterMembership.csv');
 function computeGeneExpressionPerSpot(geneExpressionData, cellTypeData, geneSet) {
     let spotExpression = {};
     
     Object.keys(cellTypeData).forEach(barcode => {
         let totalExpression = 0;
         let cellTypes = cellTypeData[barcode];
-        
+
         Object.keys(cellTypes).forEach(cellType => {
             let proportion = cellTypes[cellType];
+            
             if (geneExpressionData[cellType]) {
                 geneSet.forEach(gene => {
                     let geneValue = geneExpressionData[cellType][gene];
@@ -254,12 +325,18 @@ function computeGeneExpressionPerSpot(geneExpressionData, cellTypeData, geneSet)
  * threshold - Minimum expression value required for coloring
  */
 function colorSpotsByExpression(expressionPerSpot, threshold) {
+    //console.log("Coloring spots with:", expressionPerSpot);
     Object.keys(expressionPerSpot).forEach((barcode) => {
         const expressionValue = expressionPerSpot[barcode];
         if (expressionValue > threshold) {
             let discIndex = discs.findIndex(disc => disc.userData.id === barcode);
             if (discIndex !== -1) {
                 colorPieDisc(discIndex, [0xff0000], [1.0]); // Fully red for spots above threshold
+            }
+        }else{
+            let discIndex = discs.findIndex(disc => disc.userData.id === barcode);
+            if (discIndex !== -1) {
+                colorPieDisc(discIndex, [0x00008B], [1.0]); // Fully red for spots above threshold
             }
         }
     });
@@ -268,15 +345,15 @@ function colorSpotsByExpression(expressionPerSpot, threshold) {
 /**
  * Color the gene set spots
  */
-async function processGeneExpression() {
+async function processGeneExpression(selectedGenes) {
     //const geneExpressionData = await loadGeneExpressionData('../data/ClusterGeneExpression.csv');
     //const cellTypeData = await loadCellTypeMembership('../data/SpotClusterMembership.csv');
     
-    let selectedGenes = ['0610005C13Rik']; // Example gene
+    //console.log("Computing expression for:", selectedGenes);
     let expressionPerSpot = computeGeneExpressionPerSpot(geneExpressionData, cellTypeData, selectedGenes);
     
-    console.log(expressionPerSpot); // Output the computed expression for all spots
-    colorSpotsByExpression(expressionPerSpot, 0.002); // Color spots above threshold
+    //console.log(expressionPerSpot); // Output the computed expression for all spots
+    colorSpotsByExpression(expressionPerSpot, 0.01); // Color spots above threshold
 }
 
 
@@ -289,7 +366,7 @@ async function createDiscsFromCSV(csvFilePath, numLines, scaleFactor = 0.07) {
     const text = await response.text();
     const rows = text.split('\n').slice(1);
 
-    const discMaterial = new THREE.MeshBasicMaterial({ color: 0x00008B, side: THREE.DoubleSide, transparent: true });
+    const discMaterial = new THREE.MeshBasicMaterial({ color: 0x00008B, side: THREE.DoubleSide, transparent: true});
 
     let validRows = rows.filter(row => {
         const values = row.split(',').map(value => value.trim());
@@ -372,38 +449,31 @@ const colorPieDisc = (index, colors, portions) => {
 
     const oldDisc = discs[index];
 
-    // Extract radius from old disc geometry
-    let oldRadius = 0.5; // Default value in case of error
-    if (oldDisc.geometry && oldDisc.geometry.parameters) {
+    if (!oldDisc) {
+        console.error(`colorPieDisc: No disc found at index ${index}`);
+        return;
+    }
+
+    // Ensure we extract radius from the correct disc type
+    let oldRadius = 0.5;
+    if (oldDisc.geometry?.parameters) {
         oldRadius = oldDisc.geometry.parameters.radiusTop || 0.5;
     }
 
-    // Remove old disc
+    // Remove old disc from scene
     scene.remove(oldDisc);
-    
-    // Create new pie chart using old disc size
-    const group = new THREE.Group();
-    let startAngle = 0;
-    for (let i = 0; i < colors.length; i++) {
-        const segmentAngle = Math.PI * 2 * portions[i];
-        const shape = new THREE.Shape();
-        shape.moveTo(0, 0);
-        shape.absarc(0, 0, oldRadius, startAngle, startAngle + segmentAngle, false);
-        shape.lineTo(0, 0);
-        const geometry = new THREE.ShapeGeometry(shape);
-        const material = new THREE.MeshBasicMaterial({ color: colors[i], side: THREE.DoubleSide, transparent: false });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.z = Math.PI;
-        group.add(mesh);
-        startAngle += segmentAngle;
-    }
 
-    // Preserve position of the old disc
-    group.position.copy(oldDisc.position);
+    // Create new disc with updated color
+    const newMaterial = new THREE.MeshBasicMaterial({ color: colors[0], side: THREE.DoubleSide });
+    const newDisc = new THREE.Mesh(new THREE.CylinderGeometry(oldRadius, oldRadius, 0.1, 32), newMaterial);
 
-    // Add to scene
-    scene.add(group);
-    discs[index] = group;
+    newDisc.rotation.x = Math.PI / 2;
+    newDisc.position.copy(oldDisc.position);
+    newDisc.userData.id = oldDisc.userData.id;
+
+    // Replace in scene and array
+    scene.add(newDisc);
+    discs[index] = newDisc;
 };
 
 /**
@@ -432,16 +502,19 @@ async function init() {
     geneExpressionData = await loadGeneExpressionData('../data/ClusterGeneExpression.csv');
     cellTypeData = await loadCellTypeMembership('../data/SpotClusterMembership.csv');
 
+    updateClipping();
+    populateGeneDropdown(geneList);
+
     console.log("Initialization done.");
 
 }
 
 // Call the async function
 await init();
-
 // Example: Convert disc at index into a colored pie chart
 //colorPieDisc(5, [0xff0000, 0x00ff00, 0x0000ff], [0.2, 0.4, 0.4]);
 
 // Run the process
-processGeneExpression();
+let selectedGenes = ['1700047M11Rik'];
+//processGeneExpression(selectedGenes);
 
