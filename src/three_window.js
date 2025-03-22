@@ -13,20 +13,21 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  *      - Select a point from bar graph, show corresponding cell set. -- TODO, example see slides P9
  * 
  * 4. Switch between gene sets, so when select a gene set, its corredponding cells will be colored -- TODO
- *      - Have created function (processGeneExpression) to color a gene set, but the calculated gene set seems have issue. The colored cells does not match the demo.
+ *      - Create function to color a gene set. -- Done (colorSpotsByExpression)
+ *      - Coloring in different strength -- TODO, Optional
  * 
  * 5. 2D->3D -- Done, check createDiscsFromCSV
  * 
- * 6. Clipping -- TODO
+ * 6. Clipping -- Done
  * 
- * 7. Synchronously and colored gene viewing -- Partially Done
- *      - Function to color specific cell -- Done
+ * 7. Synchronously and colored gene viewing -- TODO
+ *      - Function to color a gene set -- Done
  *      - Function to create multiple layers of cells so that we can show the same cell position in different colors. -- TODO
  */
 
 
 /**
- * General Variables
+ * Variables
  */
 let tissueImage = '../data/image.png'
 let SpotPositionsPath = '../data/SpotPositions.csv'
@@ -34,11 +35,18 @@ let ClusterGeneExpressionPath = '../data/ClusterGeneExpression.csv'
 let SpotClusterMembershipPath = '../data/SpotClusterMembership.csv'
 const discs = [];
 let geneExpressionData;
+let geneList;
 let cellTypeData;
 let tissueImageMesh;
 const raycaster = new THREE.Raycaster();
 raycaster.params.Points = { threshold: 10 };
 const mouse = new THREE.Vector2();
+
+let featureMatrix;
+let barcodeList;
+/**
+ ----------------------------------------------------------------------------------------------------------------------------------------------------------
+ */
 
 /**
  * Scene Setup
@@ -55,7 +63,7 @@ const singleInfoBox = document.getElementById('single-cell-info-box');
 const geneSearchInput = document.getElementById('gene-search');
 const geneSelect = document.getElementById('gene-select');
 
-const geneList = ["1700047M11Rik", "Zzz3"];
+//const geneList = ["1700047M11Rik", "Zzz3"];
 function populateGeneDropdown(genes) {
     geneSelect.innerHTML = ''; // Clear previous options
     genes.forEach(gene => {
@@ -65,22 +73,13 @@ function populateGeneDropdown(genes) {
         geneSelect.appendChild(option);
     });
 }
-geneSearchInput.addEventListener('input', () => {
-    const query = geneSearchInput.value.toLowerCase();
-    const filteredGenes = geneList.filter(gene => gene.toLowerCase().includes(query));
-    populateGeneDropdown(filteredGenes);
-});
-geneSelect.addEventListener('change', () => {
-    const selectedGene = geneSelect.value;
-    if (selectedGene) {
-        processGeneExpression([selectedGene]); // Pass the selected gene
-    }
-});
-
-
 
 /**
- * Mouse and Camera
+ ----------------------------------------------------------------------------------------------------------------------------------------------------------
+ */
+
+/**
+ * Mouse and Camera and Handlers
  */
 
 //Camera Movement Variables
@@ -179,9 +178,7 @@ function updateClipping() {
 leftClipSlider.addEventListener('input', updateClipping);
 rightClipSlider.addEventListener('input', updateClipping);
 
-/**
- * Load cell info when mouse hover over each disc/cell.
- */
+//Load cell info when mouse hover over each disc/cell.
 container.addEventListener('mousemove', (event) => {
     raycaster.params.Mesh.threshold = 5; 
     //raycaster.far = 10000;
@@ -205,10 +202,57 @@ container.addEventListener('mousemove', (event) => {
     }
 });
 
+//Gene search box
+geneSearchInput.addEventListener('input', () => {
+    const query = geneSearchInput.value.toLowerCase();
+    const filteredGenes = geneList.filter(gene => gene.toLowerCase().includes(query));
+    populateGeneDropdown(filteredGenes);
+});
+//Gene select, will triger spots coloring
+geneSelect.addEventListener('change', () => {
+    const selectedGene = geneSelect.value;
+    if (selectedGene) {
+        let expressionPerSpot = computeSpotExpressionFromMatrix(featureMatrix, geneList, [selectedGene]);
+        colorSpotsByExpression(expressionPerSpot, barcodeList, 0);
+    }
+});
+
+// Cells Opacity Control
+const cellsOpacitySlider = document.getElementById('cells-opacity-slider');
+cellsOpacitySlider.addEventListener('input', (event) => {
+    const opacity = parseFloat(event.target.value);
+    discs.forEach(disc => {
+        if (disc.material) {
+            disc.material.opacity = opacity;
+            disc.material.transparent = true;
+        } else if (disc.children) {
+            disc.children.forEach(child => {
+                if (child.material) {
+                    child.material.opacity = opacity;
+                    child.material.transparent = true;
+                }
+            });
+        }
+    });
+});
+
+// Image Opacity Control
+const imageOpacitySlider = document.getElementById('image-opacity-slider');
+imageOpacitySlider.addEventListener('input', (event) => {
+    const opacity = parseFloat(event.target.value);
+    if (tissueImageMesh && tissueImageMesh.material) {
+        tissueImageMesh.material.opacity = opacity;
+        tissueImageMesh.material.transparent = true;
+    }
+});
+/**
+ * -----------------------------------------------------------------------------------------------------------------------------------------
+ */
 
 /**
- * Function to Load and Display an Image with Adjustable Position and Size
+ * File Loading Functions.
  */
+// Function to Load and Display an Image with Adjustable Position and Size
 function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z: 0 }) {
     const textureLoader = new THREE.TextureLoader();
     textureLoader.load(imagePath, function (texture) {
@@ -219,8 +263,8 @@ function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z:
         const planeGeometry = new THREE.PlaneGeometry(width, height);
         const planeMaterial = new THREE.MeshBasicMaterial({ 
             map: texture, 
-            transparent: true,  // Ensures material supports transparency
-            opacity: 1.0,       // Start at full opacity
+            transparent: true,
+            opacity: 1.0,
         }); 
 
         tissueImageMesh = new THREE.Mesh(planeGeometry, planeMaterial);
@@ -232,135 +276,82 @@ function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z:
 async function loadGeneExpressionData(csvFilePath) {
     const response = await fetch(csvFilePath);
     const text = await response.text();
-    const rows = text.split('\n');
-    
-    let headers = rows[0].split(',').map(h => h.trim().replace(/["']/g, '')); // Remove quotes
-    let geneExpressionData = {};
-    
+    const rows = text.split('\n').filter(row => row.trim() !== '');
+
+    let headers = rows[0].split(',').map(h => h.trim().replace(/["']/g, ''));
+    let geneList = headers.slice(1);
+
+    //let geneExpressionData = {};
+
     for (let i = 1; i < rows.length; i++) {
         let values = rows[i].split(',').map(v => v.trim());
-        let cellType = values[0].replace(/["']/g, ''); // Remove extra quotes from cell type names
-        
+        let cellType = values[0].replace(/["']/g, '');
+
         let expression = {};
         for (let j = 1; j < headers.length; j++) {
             expression[headers[j]] = parseFloat(values[j]) || 0;
         }
-        geneExpressionData[cellType] = expression;
+        //geneExpressionData[cellType] = expression;
     }
 
-    //console.log("Cleaned Gene Expression Data Sample:", Object.entries(geneExpressionData).slice(0, 5));
-    return geneExpressionData;
+    //return { geneExpressionData, geneList };
+    return { geneList };
 }
 
-/**
- * Function to load cell type proportions from SpotClusterMembership.csv
- * Stores data in a dictionary where keys are spot IDs and values are cell type distributions.
- */
+//Read FeatureMatrix.mtx.
+async function loadFeatureMatrix(filePath) {
+    const response = await fetch(filePath);
+    const text = await response.text();
+    const lines = text.split('\n').filter(line => line.trim() && !line.startsWith('%'));
+
+    const [numRows, numCols, numEntries] = lines[0].trim().split(/\s+/).map(Number);
+
+    // Initialize empty matrix as array of rows
+    const matrix = Array.from({ length: numRows }, () => Array(numCols).fill(0));
+
+    for (let i = 1; i < lines.length; i++) {
+        const [row, col, value] = lines[i].trim().split(/\s+/);
+        matrix[parseInt(row) - 1][parseInt(col) - 1] = parseFloat(value);
+    }
+
+    return matrix;
+}
+
 async function loadCellTypeMembership(csvFilePath) {
     const response = await fetch(csvFilePath);
     const text = await response.text();
-    const rows = text.split('\n');
-    
-    let headers = rows[0].split(',').map(h => h.trim().replace(/["']/g, '')); // Remove quotes
-    let cellTypeData = {};
-    
+    const rows = text.split('\n').filter(row => row.trim() !== '');
+
+    let headers = rows[0].split(',').map(h => h.trim().replace(/["']/g, '')); // Clean headers
+    //let cellTypeData = {};
+    let barcodeList = [];
+
     for (let i = 1; i < rows.length; i++) {
         let values = rows[i].split(',').map(v => v.trim());
-        let barcode = values[0].replace(/["']/g, ''); // Remove extra quotes
-        
+        if (values.length < 2) continue; // skip incomplete lines
+
+        let barcode = values[0].replace(/["']/g, '');
+        barcodeList.push(barcode);
+
         let membership = {};
         for (let j = 1; j < headers.length; j++) {
-            membership[headers[j].replace(/["']/g, '')] = parseFloat(values[j]) || 0;
+            membership[headers[j]] = parseFloat(values[j]) || 0;
         }
-        cellTypeData[barcode] = membership;
+        //cellTypeData[barcode] = membership;
     }
 
-    //console.log("Cleaned Cell Type Membership Sample:", Object.entries(cellTypeData).slice(0, 5));
-    return cellTypeData;
+    //return { cellTypeData, barcodeList };
+    return { barcodeList };
 }
 /**
- * Function to compute gene expression per spatial spot
- * geneExpressionData - Gene expression values for each cell type
- * cellTypeData - Cell type composition for each spatial spot
- * geneSet - List of genes to compute expression for
- * returns Spot-wise total gene expression values
+ * -----------------------------------------------------------------------------------------------------------------------------------------
  */
-
-//geneExpressionData = await loadGeneExpressionData('../data/ClusterGeneExpression.csv');
-//cellTypeData = await loadCellTypeMembership('../data/SpotClusterMembership.csv');
-function computeGeneExpressionPerSpot(geneExpressionData, cellTypeData, geneSet) {
-    let spotExpression = {};
-    
-    Object.keys(cellTypeData).forEach(barcode => {
-        let totalExpression = 0;
-        let cellTypes = cellTypeData[barcode];
-
-        Object.keys(cellTypes).forEach(cellType => {
-            let proportion = cellTypes[cellType];
-            
-            if (geneExpressionData[cellType]) {
-                geneSet.forEach(gene => {
-                    let geneValue = geneExpressionData[cellType][gene];
-                    if (geneValue === undefined) {
-                        console.warn(`Gene ${gene} not found for CellType ${cellType}`);
-                    }
-                    let contribution = proportion * (geneValue || 0);
-                    totalExpression += contribution;
-                    //console.log(`Barcode: ${barcode}, CellType: ${cellType}, Gene: ${gene}, Proportion: ${proportion.toFixed(6)}, Expression: ${(geneValue || 0).toFixed(6)}, Contribution: ${contribution.toFixed(6)}`);
-                });
-            } else {
-                console.warn(`CellType ${cellType} not found in Gene Expression Data`);
-            }
-        });
-
-        spotExpression[barcode] = parseFloat(totalExpression.toFixed(6)); // Keep more decimals
-    });
-
-    return spotExpression;
-}
 
 /**
- * Function to color spots based on gene expression threshold
- * expressionPerSpot - Computed gene expression per spot
- * threshold - Minimum expression value required for coloring
+ * Discs/Spots Process
  */
-function colorSpotsByExpression(expressionPerSpot, threshold) {
-    //console.log("Coloring spots with:", expressionPerSpot);
-    Object.keys(expressionPerSpot).forEach((barcode) => {
-        const expressionValue = expressionPerSpot[barcode];
-        if (expressionValue > threshold) {
-            let discIndex = discs.findIndex(disc => disc.userData.id === barcode);
-            if (discIndex !== -1) {
-                colorPieDisc(discIndex, [0xff0000], [1.0]); // Fully red for spots above threshold
-            }
-        }else{
-            let discIndex = discs.findIndex(disc => disc.userData.id === barcode);
-            if (discIndex !== -1) {
-                colorPieDisc(discIndex, [0x00008B], [1.0]); // Fully red for spots above threshold
-            }
-        }
-    });
-}
 
-/**
- * Color the gene set spots
- */
-async function processGeneExpression(selectedGenes) {
-    //const geneExpressionData = await loadGeneExpressionData('../data/ClusterGeneExpression.csv');
-    //const cellTypeData = await loadCellTypeMembership('../data/SpotClusterMembership.csv');
-    
-    //console.log("Computing expression for:", selectedGenes);
-    let expressionPerSpot = computeGeneExpressionPerSpot(geneExpressionData, cellTypeData, selectedGenes);
-    
-    //console.log(expressionPerSpot); // Output the computed expression for all spots
-    colorSpotsByExpression(expressionPerSpot, 0.01); // Color spots above threshold
-}
-
-
-
-/**
- * Create clee plots/discs by using the info read from the given csv file
- */
+//Create plots/discs by using the info read from the given csv file
 async function createDiscsFromCSV(csvFilePath, numLines, scaleFactor = 0.07) {
     const response = await fetch(csvFilePath);
     const text = await response.text();
@@ -405,42 +396,11 @@ function animate() {
 }
 animate();
 
-/**
- * Opacity Control
- */
-// Cells Opacity Control
-const cellsOpacitySlider = document.getElementById('cells-opacity-slider');
-cellsOpacitySlider.addEventListener('input', (event) => {
-    const opacity = parseFloat(event.target.value);
-    discs.forEach(disc => {
-        if (disc.material) {
-            disc.material.opacity = opacity;
-            disc.material.transparent = true;
-        } else if (disc.children) {
-            disc.children.forEach(child => {
-                if (child.material) {
-                    child.material.opacity = opacity;
-                    child.material.transparent = true;
-                }
-            });
-        }
-    });
-});
-
-// Image Opacity Control
-const imageOpacitySlider = document.getElementById('image-opacity-slider');
-imageOpacitySlider.addEventListener('input', (event) => {
-    const opacity = parseFloat(event.target.value);
-    if (tissueImageMesh && tissueImageMesh.material) {
-        tissueImageMesh.material.opacity = opacity;
-        tissueImageMesh.material.transparent = true;
-    }
-});
 
 
-/**
- * Function to Modify a Disc into a colored Pie.
- */
+
+
+ //Function to Modify a Disc into a colored Pie.
 const colorPieDisc = (index, colors, portions) => {
     if (index < 0 || index >= discs.length) {
         console.error(`colorPieDisc: Invalid index ${index}, discs length: ${discs.length}`);
@@ -476,12 +436,63 @@ const colorPieDisc = (index, colors, portions) => {
     discs[index] = newDisc;
 };
 
-/**
- * Function to find a specific cell disc by id (the barcode of genes).
- */
+
+//Function to find a specific cell disc by id (the barcode of genes).
 const findDiscById = (barcode) => {
     return scene.children.find(disc => disc.userData.id === barcode);
 };
+
+//Function to sort an array from 0 to 9, then a to z.
+function sortInPlace(array) {
+    array.sort((a, b) => {
+        const isDigit = str => /^\d/.test(str);
+        const aStartsWithDigit = isDigit(a);
+        const bStartsWithDigit = isDigit(b);
+
+        if (aStartsWithDigit && !bStartsWithDigit) return -1;
+        if (!aStartsWithDigit && bStartsWithDigit) return 1;
+
+        return a.localeCompare(b);
+    });
+}
+
+
+//Compute the given gene's(selectedGenes) expression strength.
+function computeSpotExpressionFromMatrix(featureMatrix, geneList, selectedGenes) {
+    const indices = selectedGenes.map(g => geneList.indexOf(g)).filter(i => i !== -1);
+    let expressionPerSpot = Array(featureMatrix[0].length).fill(0);
+
+    indices.forEach(index => {
+        const geneRow = featureMatrix[index];
+        for (let i = 0; i < geneRow.length; i++) {
+            expressionPerSpot[i] += geneRow[i];
+        }
+    });
+
+    return expressionPerSpot;
+}
+//Color discs/spots based on the expression strength calculated.
+function colorSpotsByExpression(expressionPerSpot, barcodeList, threshold = 0.01) {
+    for (let i = 0; i < expressionPerSpot.length; i++) {
+        const expressionValue = expressionPerSpot[i];
+        const barcode = barcodeList[i];
+
+        const discIndex = discs.findIndex(d => d.userData.id === barcode);
+
+        if (discIndex !== -1) {
+            if (expressionValue > threshold) {
+                // High expression → Red
+                colorPieDisc(discIndex, [0xff0000], [1.0]);
+            } else {
+                // Low expression → Dark Blue
+                colorPieDisc(discIndex, [0x00008B], [1.0]);
+            }
+        }
+    }
+}
+/**
+ * ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ */
 
 /**
  * Initialization function.
@@ -499,22 +510,24 @@ async function init() {
     //loadImageWithAlignment(tissueImage, SpotPositionsPath);
     console.log("Tissue cut image loaded."); 
 
-    geneExpressionData = await loadGeneExpressionData('../data/ClusterGeneExpression.csv');
-    cellTypeData = await loadCellTypeMembership('../data/SpotClusterMembership.csv');
+    console.log("Loading files..");
+    ({ geneList } = await loadGeneExpressionData('../data/ClusterGeneExpression.csv'));
+    ({ barcodeList } = await loadCellTypeMembership('../data/SpotClusterMembership.csv'));
+    featureMatrix = await loadFeatureMatrix('../data/FeatureMatrix.mtx');
+    //sortInPlace(geneList);
+    //console.log(barcodeList);
+    console.log("Files loaded.");
 
+    console.log("Loading UI..");
     updateClipping();
     populateGeneDropdown(geneList);
+    console.log("UI Loaded.");
 
     console.log("Initialization done.");
-
+    alert("Initialization done.");
 }
+/**
+ * ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ */
 
-// Call the async function
 await init();
-// Example: Convert disc at index into a colored pie chart
-//colorPieDisc(5, [0xff0000, 0x00ff00, 0x0000ff], [0.2, 0.4, 0.4]);
-
-// Run the process
-let selectedGenes = ['1700047M11Rik'];
-//processGeneExpression(selectedGenes);
-
