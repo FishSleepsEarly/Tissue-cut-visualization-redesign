@@ -25,6 +25,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  *      - Function to create multiple layers of cells so that we can show the same cell position in different colors. -- TODO
  * 
  * 8. Improve the project UI and outlook -- TODO
+ *      - A scale bar indicate the viewing scale (2mm, 1mm ...) --TODO
+ *      - General better look -- TODO
  */
 
 
@@ -46,6 +48,8 @@ const mouse = new THREE.Vector2();
 
 let featureMatrix;
 let barcodeList;
+
+
 /**
  ----------------------------------------------------------------------------------------------------------------------------------------------------------
  */
@@ -60,19 +64,124 @@ const container = document.getElementById('three-container');
 renderer.setSize(container.clientWidth, container.clientHeight);
 container.appendChild(renderer.domElement);
 const singleInfoBox = document.getElementById('single-cell-info-box');
-
+//for Spot Index Map and showing cross lines
+const crosshairMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+let crosshairX = new THREE.Line(new THREE.BufferGeometry(), crosshairMaterial);
+let crosshairY = new THREE.Line(new THREE.BufferGeometry(), crosshairMaterial);
+scene.add(crosshairX);
+scene.add(crosshairY);
+let crosshairLocked = false;
 // set up the gene seletc menu
 const geneSearchInput = document.getElementById('gene-search');
 const geneSelect = document.getElementById('gene-select');
 
-//const geneList = ["1700047M11Rik", "Zzz3"];
+//Set up the gene selection menu
 function populateGeneDropdown(genes) {
-    geneSelect.innerHTML = ''; // Clear previous options
+    geneSelect.innerHTML = ''; 
     genes.forEach(gene => {
         const option = document.createElement('option');
         option.value = gene;
         option.textContent = gene;
         geneSelect.appendChild(option);
+    });
+}
+
+//Set up the cross lines.
+function createCrosshairs() {
+    const material = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+
+    //Horizontal line
+    const geometryX = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 5),
+        new THREE.Vector3(0, 0, 5)
+    ]);
+    crosshairX = new THREE.Line(geometryX, material);
+    crosshairX.visible = false;
+    scene.add(crosshairX);
+
+    //Vertical line
+    const geometryY = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 5),
+        new THREE.Vector3(0, 0, 5)
+    ]);
+    crosshairY = new THREE.Line(geometryY, material);
+    crosshairY.visible = false;
+    scene.add(crosshairY);
+}
+
+// Set up the Spot Index Map
+function createSpotIndexPlot(discs) {
+    const infoBox = document.getElementById('locked-spot-info');
+    const spotIndices = [];
+    const barcodes = [];
+    const visibleDiscs = discs.filter(d => d.visible);
+
+    visibleDiscs.forEach((disc, idx) => {
+        spotIndices.push(idx);
+        barcodes.push(disc.userData.id);
+    });
+
+    const trace = {
+        x: spotIndices,
+        y: new Array(spotIndices.length).fill(1),
+        mode: 'markers',
+        type: 'scatter',
+        text: barcodes.map((b, i) => `Spot ID: ${b}<br>Index: ${spotIndices[i]}`),
+        hoverinfo: 'text',
+        marker: { size: 6, color: 'blue' }
+    };
+
+    const layout = {
+        title: 'Spot Index Map',
+        xaxis: { title: 'Spot Index' },
+        yaxis: { visible: false }
+    };
+
+    Plotly.newPlot('spot-plot', [trace], layout);
+
+    const plotDiv = document.getElementById('spot-plot');
+
+    //Hover only update if NOT locked
+    plotDiv.on('plotly_hover', function(data){
+        if (!crosshairLocked) {
+            const index = data.points[0].pointIndex;
+            const disc = visibleDiscs[index];
+            if (disc) {
+                updateCrosshair(disc.position.x, disc.position.y);
+            }
+        }
+    });
+
+    //Unhover only hide if NOT locked
+    plotDiv.on('plotly_unhover', function(){
+        if (!crosshairLocked) {
+            hideCrosshair();
+        }
+    });
+
+    // Left click: lock cross line and info box on screen
+    plotDiv.on('plotly_click', function(data){
+        const index = data.points[0].pointIndex;
+        const disc = visibleDiscs[index];
+        if (disc) {
+            crosshairLocked = true;
+            updateCrosshair(disc.position.x, disc.position.y);
+
+            //Lock info box
+            const infoBox = document.getElementById('locked-spot-info');
+            infoBox.innerHTML = `<strong>Spot ID:</strong> ${disc.userData.id}<br><strong>Index:</strong> ${index}`;
+            infoBox.style.display = 'block';
+        }
+    });
+
+    //Right click: unlock crosshair and hide info box
+    plotDiv.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        crosshairLocked = false;
+        hideCrosshair();
+
+        const infoBox = document.getElementById('locked-spot-info');
+        infoBox.style.display = 'none';
     });
 }
 
@@ -107,6 +216,11 @@ const maxPositionY = 1200;
 //const initialCameraPosition = {x:9000,y:9000,z:10000}
 const initialCameraPosition = {x:9000*0.07,y:9000*0.07,z:10000*0.07}
 camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
+
+// Prevent page scrolling on wheel when hovering over Three.js window
+container.addEventListener('wheel', (event) => {
+    event.preventDefault();
+}, { passive: false });
 
 //Camera reset
 const resetCamera = () => {
@@ -404,6 +518,9 @@ async function createDiscsFromCSV(csvFilePath, numLines, scaleFactor = 0.07) {
  */
 function animate() {
     requestAnimationFrame(animate);
+    // Make sure crosshairs are rendered
+    crosshairX.visible = crosshairX.visible ?? false;
+    crosshairY.visible = crosshairY.visible ?? false;
     renderer.render(scene, camera);
 }
 animate();
@@ -541,6 +658,32 @@ function colorSpotsByExpression(expressionPerSpot, barcodeList) {
  */
 
 /**
+ * Helper and other functions
+ */
+// Update the corss lines on the three window
+function updateCrosshair(x, y) {
+    const lineZ = 5;
+    crosshairX.geometry.setFromPoints([
+        new THREE.Vector3(minPositionX, y, lineZ),
+        new THREE.Vector3(maxPositionX, y, lineZ)
+    ]);
+    crosshairY.geometry.setFromPoints([
+        new THREE.Vector3(x, minPositionY, lineZ),
+        new THREE.Vector3(x, maxPositionY, lineZ)
+    ]);
+    crosshairX.visible = true;
+    crosshairY.visible = true;
+}
+// Hide the corss lines on the three window
+function hideCrosshair() {
+    crosshairX.visible = false;
+    crosshairY.visible = false;
+}
+/**
+ * ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ */
+
+/**
  * Initialization function.
  */
 async function init() {
@@ -567,9 +710,13 @@ async function init() {
     console.log("Loading UI..");
     updateClipping();
     populateGeneDropdown(geneList);
+    createSpotIndexPlot(discs);
+    createCrosshairs();
+    hideCrosshair();
     console.log("UI Loaded.");
 
     console.log("Initialization done.");
+    document.getElementById('loading-overlay').style.display = 'none';
     alert("Initialization done.");
 }
 /**

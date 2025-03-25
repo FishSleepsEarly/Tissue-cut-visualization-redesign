@@ -5,8 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Three.js Honeycomb</title>
     <link rel="stylesheet" href="/styles.css" />
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   </head>
   <body>
+    <!-- Initializing Message-->
+    <div id="loading-overlay" style="
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255,255,255,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        color: #333;
+        z-index: 1000;
+    ">
+        Initializing...
+    </div>
+
     <!-- Container for Three.js render window -->
     <div id="three-container"></div>
     
@@ -41,6 +60,7 @@
 
       <button id="reset-camera">Reset Camera</button>
 
+      <!-- Gene Selection Box-->
       <div id="gene-selection-container">
         <label for="gene-select">Select a Gene:</label>
         <input type="text" id="gene-search" placeholder="Search">
@@ -49,7 +69,7 @@
 
     </div>
 
-    <!-- Gene Expression Color Scale -->
+    <!-- Gene Expression Color Scale (The color bar at right-top of page)-->
     <div id="color-scale-container" style="
     position: absolute;
     top: 10px;
@@ -78,6 +98,24 @@
       <span id="scale-min">0.0</span>
       <span id="scale-max">10.0</span>
     </div>
+    </div>
+
+    <!-- Spot Table and the Infor Box-->
+    <div id="spot-plot-container" style="position:absolute; top:700px; left:0px; width:600px; height:300px;">
+      <div id="spot-plot" style="width:100%; height:100%;"></div>
+      <div id="locked-spot-info" style="
+          position: absolute;
+          bottom: 5px;
+          left: 5px;
+          background: rgba(0, 0, 0, 0.8);
+          color: white;
+          padding: 6px 10px;
+          border-radius: 4px;
+          font-size: 13px;
+          display: none;
+          pointer-events: none;
+          z-index: 10;
+      "></div>
     </div>
 
     <script type="module" src="/src/three_window.js"></script>
