@@ -12,9 +12,9 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  *      - Put mouse on a cell, will show its corresponding coordinates and barcode -- Done, but quality might need improvement. Check 'Load cell info when mouse hover over each disc/cell.' part.
  *      - Select a point from bar graph, show corresponding cell set. -- TODO, example see slides P9
  * 
- * 4. Switch between gene sets, so when select a gene set, its corredponding cells will be colored -- TODO
+ * 4. Switch between gene sets, so when select a gene set, its corredponding cells will be colored -- Done
  *      - Create function to color a gene set. -- Done (colorSpotsByExpression)
- *      - Coloring in different strength -- TODO, Optional
+ *      - Coloring in different strength -- Done
  * 
  * 5. 2D->3D -- Done, check createDiscsFromCSV
  * 
@@ -23,6 +23,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
  * 7. Synchronously and colored gene viewing -- TODO
  *      - Function to color a gene set -- Done
  *      - Function to create multiple layers of cells so that we can show the same cell position in different colors. -- TODO
+ * 
+ * 8. Improve the project UI and outlook -- TODO
  */
 
 
@@ -208,12 +210,22 @@ geneSearchInput.addEventListener('input', () => {
     const filteredGenes = geneList.filter(gene => gene.toLowerCase().includes(query));
     populateGeneDropdown(filteredGenes);
 });
+
 //Gene select, will triger spots coloring
 geneSelect.addEventListener('change', () => {
     const selectedGene = geneSelect.value;
     if (selectedGene) {
-        let expressionPerSpot = computeSpotExpressionFromMatrix(featureMatrix, geneList, [selectedGene]);
-        colorSpotsByExpression(expressionPerSpot, barcodeList, 0);
+        const expressionPerSpot = computeSpotExpressionFromMatrix(featureMatrix, geneList, [selectedGene]);
+
+        const min = Math.min(...expressionPerSpot).toFixed(1);
+        const max = Math.max(...expressionPerSpot).toFixed(1);
+
+        //Update Color Scale
+        document.getElementById('scale-min').innerText = min;
+        document.getElementById('scale-max').innerText = max;
+        document.getElementById('scale-gene-name').innerText = selectedGene;
+
+        colorSpotsByExpression(expressionPerSpot, barcodeList);
     }
 });
 
@@ -357,7 +369,7 @@ async function createDiscsFromCSV(csvFilePath, numLines, scaleFactor = 0.07) {
     const text = await response.text();
     const rows = text.split('\n').slice(1);
 
-    const discMaterial = new THREE.MeshBasicMaterial({ color: 0x00008B, side: THREE.DoubleSide, transparent: true});
+    const discMaterial = new THREE.MeshBasicMaterial({ color: 0x4B0082, side: THREE.DoubleSide, transparent: true});
 
     let validRows = rows.filter(row => {
         const values = row.split(',').map(value => value.trim());
@@ -471,22 +483,56 @@ function computeSpotExpressionFromMatrix(featureMatrix, geneList, selectedGenes)
 
     return expressionPerSpot;
 }
+
+//Decide what color should be applied to a cell
+function getColorFromExpression(value, min, max) {
+    const ratio = (value - min) / (max - min);
+    const clamped = Math.max(0, Math.min(1, ratio));
+
+    // Define gradient stops
+    const colorStops = [
+        { pos: 0.0, color: [75, 0, 130] },     // Purple
+        { pos: 0.3, color: [204, 102, 255] },  // Pinkish
+        { pos: 0.5, color: [255, 102, 102] },  // Light Red
+        { pos: 0.7, color: [255, 165, 0] },    // Orange
+        { pos: 1.0, color: [255, 255, 0] },    // Yellow
+    ];
+
+    // Find which two stops the ratio falls between
+    for (let i = 0; i < colorStops.length - 1; i++) {
+        const left = colorStops[i];
+        const right = colorStops[i + 1];
+
+        if (clamped >= left.pos && clamped <= right.pos) {
+            const localRatio = (clamped - left.pos) / (right.pos - left.pos);
+
+            const r = Math.round(left.color[0] + localRatio * (right.color[0] - left.color[0]));
+            const g = Math.round(left.color[1] + localRatio * (right.color[1] - left.color[1]));
+            const b = Math.round(left.color[2] + localRatio * (right.color[2] - left.color[2]));
+
+            return (r << 16) | (g << 8) | b;
+        }
+    }
+
+    return 0x4B0082;
+}
+
+
+
+
 //Color discs/spots based on the expression strength calculated.
-function colorSpotsByExpression(expressionPerSpot, barcodeList, threshold = 0.01) {
+function colorSpotsByExpression(expressionPerSpot, barcodeList) {
+    const min = Math.min(...expressionPerSpot);
+    const max = Math.max(...expressionPerSpot);
+
     for (let i = 0; i < expressionPerSpot.length; i++) {
-        const expressionValue = expressionPerSpot[i];
+        const value = expressionPerSpot[i];
         const barcode = barcodeList[i];
 
         const discIndex = discs.findIndex(d => d.userData.id === barcode);
-
         if (discIndex !== -1) {
-            if (expressionValue > threshold) {
-                // High expression → Red
-                colorPieDisc(discIndex, [0xff0000], [1.0]);
-            } else {
-                // Low expression → Dark Blue
-                colorPieDisc(discIndex, [0x00008B], [1.0]);
-            }
+            const color = getColorFromExpression(value, min, max);
+            colorPieDisc(discIndex, [color], [1.0]);
         }
     }
 }
