@@ -830,8 +830,8 @@ function hideCrosshair() {
  */
 
 const MAX_MULTI_GENES = 5;
-const MULTI_GENE_COLORS = [0xff0000, 0x0000ff, 0x00ff00, 0xffff00, 0xffffff];
-const MULTI_GENE_COLOR_NAMES = ['Red', 'Blue', 'Green', 'Yellow', 'White'];
+const MULTI_GENE_COLORS = [0xff0000, 0x40E0D0, 0x006400, 0xffff00, 0xffffff];
+const MULTI_GENE_COLOR_NAMES = ['Red', 'Turquoise', 'Green', 'Yellow', 'White'];
 
 let multiGeneSelections = [];
 
@@ -861,20 +861,59 @@ addGeneToSceneButton.addEventListener('click', () => {
         return;
     }
 
-    //geneSelect.disabled = true;
+    const usedColors = multiGeneSelections.map(g => g.color);
+    const color = MULTI_GENE_COLORS.find(c => !usedColors.includes(c));
 
-    const color = MULTI_GENE_COLORS[multiGeneSelections.length];
+    if (!color) {
+        alert('Max 5 gene sets can be selected!');
+        return;
+    }
     multiGeneSelections.push({ name: selectedGeneName, color });
 
+    // === Create new list item UI ===
     const listItem = document.createElement('li');
-    listItem.innerHTML = `<span style="color:${MULTI_GENE_COLOR_NAMES[multiGeneSelections.length - 1]}; font-weight:bold;">${selectedGeneName}</span> <button style="margin-left:10px;">X</button>`;
+    listItem.style.display = 'flex';
+    listItem.style.alignItems = 'center';
+    listItem.style.marginTop = '6px';
+
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = 'X';
+    removeBtn.style.marginRight = '8px';
+
+    const label = document.createElement('span');
+    label.textContent = selectedGeneName;
+    label.style.fontWeight = 'bold';
+    label.style.marginRight = '8px';
+
+    const colorBox = document.createElement('span');
+    colorBox.style.display = 'inline-block';
+    colorBox.style.width = '12px';
+    colorBox.style.height = '12px';
+    colorBox.style.backgroundColor = '#' + color.toString(16).padStart(6, '0');
+    colorBox.style.border = '1px solid #555';
+
+    listItem.appendChild(removeBtn);
+    listItem.appendChild(label);
+    listItem.appendChild(colorBox);
     multiGeneSelectedList.appendChild(listItem);
 
-    listItem.querySelector('button').addEventListener('click', () => {
+    removeBtn.addEventListener('click', () => {
         multiGeneSelections = multiGeneSelections.filter(g => g.name !== selectedGeneName);
         multiGeneSelectedList.removeChild(listItem);
-        if (multiGeneSelections.length === 0) geneDropdown.disabled = false;
-        updateSceneWithMultiGeneColors();
+
+        if (multiGeneSelections.length === 0) {
+            geneSelect.disabled = false;
+
+            // ✅ Reset all discs to default color
+            for (let i = 0; i < barcodeList.length; i++) {
+                const discIndex = discs.findIndex(d => d.userData.id === barcodeList[i]);
+                if (discIndex !== -1) {
+                    colorPieDisc(discIndex, [0x4B0082], [1.0]);
+                }
+            }
+        } else {
+            updateSceneWithMultiGeneColors();
+        }
     });
 
     updateSceneWithMultiGeneColors();
