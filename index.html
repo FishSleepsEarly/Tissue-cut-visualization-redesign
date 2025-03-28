@@ -67,41 +67,59 @@
         <select id="gene-select" size="5"></select>
       </div>
 
+      <!--
+      <div style="margin-top: 10px;">
+        <input type="checkbox" id="multi-gene-checkbox">
+        <label for="multi-gene-checkbox"> Show multiple gene sets (Rp1 + Xkr4)</label>
+        <br>
+        <button id="multi-gene-button">Apply Multi-Gene Coloring</button>
+      </div>
+      -->
+      <div style="margin-top: 10px;">
+        <input type="checkbox" id="multi-gene-checkbox">
+        <label for="multi-gene-checkbox"> Show multiple gene sets</label>
+        <br>
+        <button id="add-gene-button" style="display:none;">Add Gene Set to Scene</button>
+      </div>
+      
+      <ul id="selected-genes-list" style="list-style-type: none; padding-left: 0;"></ul>
+      
+
     </div>
 
     <!-- Gene Expression Color Scale (The color bar at right-top of page)-->
     <div id="color-scale-container" style="
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background-color: rgba(255, 255, 255, 0.9);
-    border: 1px solid #aaa;
-    padding: 4px 8px;
-    font-family: sans-serif;
-    font-size: 12px;
-    z-index: 9999;
-    width: 220px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    ">
-    <div style="display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 4px;">
-      <span>Spot</span>
-      <span id="scale-gene-name" style="color: black;">Gene</span>
-    </div>
-    <div style="
-      background: linear-gradient(to right, #4B0082, #CC66FF, #FF6666, #FFA500, #FFFF00);
-      height: 10px;
-      width: 100%;
-      margin-bottom: 4px;
-      border: 1px solid #888;
-    "></div>
-    <div style="display: flex; justify-content: space-between;">
-      <span id="scale-min">0.0</span>
-      <span id="scale-max">10.0</span>
-    </div>
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background-color: rgba(255, 255, 255, 0.9);
+      border: 1px solid #aaa;
+      padding: 4px 8px;
+      font-family: sans-serif;
+      font-size: 12px;
+      z-index: 9999;
+      width: 220px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      ">
+      <div style="display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 4px;">
+        <span>Spot</span>
+        <span id="scale-gene-name" style="color: black;">Gene</span>
+      </div>
+      <div style="
+        background: linear-gradient(to right, #4B0082, #CC66FF, #FF6666, #FFA500, #FFFF00);
+        height: 10px;
+        width: 100%;
+        margin-bottom: 4px;
+        border: 1px solid #888;
+      "></div>
+      <div style="display: flex; justify-content: space-between;">
+        <span id="scale-min">0.0</span>
+        <span id="scale-max">10.0</span>
+      </div>
     </div>
 
     <!-- Spot Table and the Infor Box-->
-    <div id="spot-plot-container" style="position:absolute; top:700px; left:0px; width:600px; height:300px;">
+    <div id="spot-plot-container" style="position:absolute; top:700px; left:600px; width:600px; height:300px;">
       <div id="spot-plot" style="width:100%; height:100%;"></div>
       <div id="locked-spot-info" style="
           position: absolute;
