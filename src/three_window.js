@@ -507,6 +507,7 @@ async function createDiscsFromCSV(csvFilePath, numLines, scaleFactor = 0.07) {
         disc.position.set(parseFloat(x) * scaleFactor, parseFloat(y) * scaleFactor, 0);
 
         disc.userData.id = barcode;
+        disc.userData.radius = parseFloat(radius) * scaleFactor;
 
         scene.add(disc);
         discs.push(disc);
@@ -529,9 +530,7 @@ animate();
 
 
 
-
-
-//Function to Modify a Disc into a colored Pie.
+// Enhanced colorPieDisc: supports both solid color and multi-color pie slices
 /*
 const colorPieDisc = (index, colors, portions) => {
     if (index < 0 || index >= discs.length) {
@@ -540,66 +539,33 @@ const colorPieDisc = (index, colors, portions) => {
     }
 
     const oldDisc = discs[index];
-
     if (!oldDisc) {
         console.error(`colorPieDisc: No disc found at index ${index}`);
         return;
-    }
-
-    // Ensure we extract radius from the correct disc type
-    let oldRadius = 0.5;
-    if (oldDisc.geometry?.parameters) {
-        oldRadius = oldDisc.geometry.parameters.radiusTop || 0.5;
     }
 
     // Remove old disc from scene
     scene.remove(oldDisc);
 
-    // Create new disc with updated color
-    const newMaterial = new THREE.MeshBasicMaterial({ color: colors[0], side: THREE.DoubleSide });
-    const newDisc = new THREE.Mesh(new THREE.CylinderGeometry(oldRadius, oldRadius, 0.1, 32), newMaterial);
-
-    newDisc.rotation.x = Math.PI / 2;
-    newDisc.position.copy(oldDisc.position);
-    newDisc.userData.id = oldDisc.userData.id;
-
-    // Replace in scene and array
-    scene.add(newDisc);
-    discs[index] = newDisc;
-};
-*/
-
-// Enhanced colorPieDisc: supports both solid color and multi-color pie slices
-const colorPieDisc = (index, colors, portions) => {
-    if (index < 0 || index >= discs.length) {
-        console.error(`colorPieDisc: Invalid index ${index}, discs length: ${discs.length}`);
-        return;
-    }
-
-    const oldDisc = discs[index];
-    if (!oldDisc) {
-        console.error(`colorPieDisc: No disc found at index ${index}`);
-        return;
-    }
-
-    // Clean up old disc or group
-    scene.remove(oldDisc);
+    // Dispose geometry and material
     if (oldDisc instanceof THREE.Group) {
         oldDisc.children.forEach(child => {
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) child.material.dispose();
+            child.geometry?.dispose();
+            child.material?.dispose();
         });
-    } else if (oldDisc.geometry) {
-        oldDisc.geometry.dispose();
-        if (oldDisc.material) oldDisc.material.dispose();
+    } else {
+        oldDisc.geometry?.dispose();
+        oldDisc.material?.dispose();
     }
 
-    let oldRadius = 0.5;
-    if (oldDisc.geometry?.parameters) {
-        oldRadius = oldDisc.geometry.parameters.radiusTop || 0.5;
+    // Default radius fallback
+    //let oldRadius = 0.5;
+    let oldRadius = oldDisc.userData?.radius || 0.5;
+    if (oldDisc.geometry?.parameters?.radiusTop) {
+        oldRadius = oldDisc.geometry.parameters.radiusTop;
     }
 
-    // Single-color: fallback to solid disc
+    // === Single Color Disc ===
     if (colors.length === 1) {
         const material = new THREE.MeshBasicMaterial({ color: colors[0], side: THREE.DoubleSide });
         const disc = new THREE.Mesh(
@@ -609,12 +575,13 @@ const colorPieDisc = (index, colors, portions) => {
         disc.rotation.x = Math.PI / 2;
         disc.position.copy(oldDisc.position);
         disc.userData.id = oldDisc.userData.id;
+
         scene.add(disc);
         discs[index] = disc;
         return;
     }
 
-    // Multi-color pie segments
+    // === Multi-color Pie Chart ===
     const group = new THREE.Group();
     const totalSegments = 64;
     let startAngle = 0;
@@ -645,6 +612,96 @@ const colorPieDisc = (index, colors, portions) => {
     group.position.copy(oldDisc.position);
     group.rotation.x = 0;
     group.userData.id = oldDisc.userData.id;
+
+    scene.add(group);
+    discs[index] = group;
+};
+*/
+const colorPieDisc = (index, colors, portions) => {
+    if (index < 0 || index >= discs.length) {
+        console.error(`colorPieDisc: Invalid index ${index}, discs length: ${discs.length}`);
+        return;
+    }
+
+    const oldDisc = discs[index];
+    if (!oldDisc) {
+        console.error(`colorPieDisc: No disc found at index ${index}`);
+        return;
+    }
+
+    scene.remove(oldDisc);
+
+    // Dispose old geometry and materials
+    if (oldDisc instanceof THREE.Group) {
+        oldDisc.children.forEach(child => {
+            child.geometry?.dispose();
+            child.material?.dispose();
+        });
+    } else {
+        oldDisc.geometry?.dispose();
+        oldDisc.material?.dispose();
+    }
+
+    // ✅ Correct and safe radius fallback
+    let oldRadius = oldDisc.userData?.radius;
+    if (typeof oldRadius !== 'number' || isNaN(oldRadius)) {
+        oldRadius = 0.5;
+    }
+
+    // === Single-color disc ===
+    if (colors.length === 1) {
+        const material = new THREE.MeshBasicMaterial({ color: colors[0], side: THREE.DoubleSide });
+        const disc = new THREE.Mesh(
+            new THREE.CylinderGeometry(oldRadius, oldRadius, 0.1, 32),
+            material
+        );
+        disc.rotation.x = Math.PI / 2;
+        disc.position.copy(oldDisc.position);
+        disc.userData = {
+            id: oldDisc.userData.id,
+            radius: oldRadius
+        };
+
+        scene.add(disc);
+        discs[index] = disc;
+        return;
+    }
+
+    // === Multi-color pie chart ===
+    const group = new THREE.Group();
+    const totalSegments = 64;
+    let startAngle = 0;
+
+    for (let i = 0; i < colors.length; i++) {
+        const angle = portions[i] * Math.PI * 2;
+        const shape = new THREE.Shape();
+        shape.moveTo(0, 0);
+        const arcSegments = Math.max(6, Math.floor(portions[i] * totalSegments));
+        for (let j = 0; j <= arcSegments; j++) {
+            const theta = startAngle + (j / arcSegments) * angle;
+            shape.lineTo(
+                oldRadius * Math.cos(theta),
+                oldRadius * Math.sin(theta)
+            );
+        }
+        shape.lineTo(0, 0);
+
+        const geometry = new THREE.ShapeGeometry(shape);
+        const material = new THREE.MeshBasicMaterial({ color: colors[i], side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.x = Math.PI;
+        group.add(mesh);
+
+        startAngle += angle;
+    }
+
+    group.position.copy(oldDisc.position);
+    group.rotation.x = 0;
+    group.userData = {
+        id: oldDisc.userData.id,
+        radius: oldRadius
+    };
+
     scene.add(group);
     discs[index] = group;
 };
@@ -835,31 +892,40 @@ function updateSceneWithMultiGeneColors() {
         const barcode = barcodeList[i];
         const discIndex = discs.findIndex(d => d.userData.id === barcode);
         if (discIndex === -1) continue;
-
+    
         const activeColors = [];
         const portions = [];
-
+    
         for (let g = 0; g < multiGeneSelections.length; g++) {
             const { expr, min, max } = minMaxPerGene[g];
             const value = expr[i];
             const ratio = (value - min) / (max - min);
             const clamped = Math.max(0, Math.min(1, ratio));
-
-            if (clamped > 0.4) {
+    
+            console.log(`Gene: ${multiGeneSelections[g].name}, Spot ${barcode}, Expr=${value.toFixed(3)}, Ratio=${clamped.toFixed(3)}`);
+    
+            if (clamped > 0.1) {
                 const color = multiGeneSelections[g].color;
                 activeColors.push(color);
                 portions.push(1);
             }
         }
-
+    
         if (activeColors.length > 0) {
             const total = portions.reduce((a, b) => a + b, 0);
+            if (Math.abs(total - 1) > 0.01) {
+                console.warn(`⚠️ Pie portions do not sum to 1 (total = ${total}) at barcode ${barcode}`);
+            }
+    
+            console.log(`Coloring disc at barcode ${barcode} with ${activeColors.length} slice(s):`, activeColors.map(c => c.toString(16)));
+    
             const normalized = portions.map(p => p / total);
             colorPieDisc(discIndex, activeColors, normalized);
         } else {
             colorPieDisc(discIndex, [0x4B0082], [1.0]); // fallback default
         }
     }
+    
 }
 
 
@@ -910,3 +976,4 @@ async function init() {
  */
 
 await init();
+//colorPieDisc(0, [0xff0000, 0x0000ff, 0x00ff00, 0xffff00, 0xffffff], [0.2, 0.2, 0.2, 0.2, 0.2])
