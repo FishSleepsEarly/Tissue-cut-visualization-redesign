@@ -274,25 +274,34 @@ container.addEventListener('contextmenu', (event) => event.preventDefault());
 //Clipping
 const leftClipSlider = document.getElementById('left-clip-slider');
 const rightClipSlider = document.getElementById('right-clip-slider');
+const topClipSlider = document.getElementById('top-clip-slider');
+const bottomClipSlider = document.getElementById('bottom-clip-slider');
 
-// Function to clip based on X position
+
+// Function to clip the scene
 function updateClipping() {
     const leftLimit = parseFloat(leftClipSlider.value);
     const rightLimit = parseFloat(rightClipSlider.value);
+    const topLimit = parseFloat(topClipSlider.value);
+    const bottomLimit = parseFloat(bottomClipSlider.value);
 
     discs.forEach(disc => {
-        if (disc.position.x < leftLimit || disc.position.x > rightLimit) {
-            disc.visible = false;
-        } else {
-            disc.visible = true;
-        }
+        const x = disc.position.x;
+        const y = disc.position.y;
+
+        const withinX = x >= leftLimit && x <= rightLimit;
+        const withinY = y >= bottomLimit && y <= topLimit;
+
+        disc.visible = withinX && withinY;
     });
 
-    // Render the scene after updating
     renderer.render(scene, camera);
 }
+
 leftClipSlider.addEventListener('input', updateClipping);
 rightClipSlider.addEventListener('input', updateClipping);
+topClipSlider.addEventListener('input', updateClipping);
+bottomClipSlider.addEventListener('input', updateClipping);
 
 //Load cell info when mouse hover over each disc/cell.
 container.addEventListener('mousemove', (event) => {
@@ -904,7 +913,6 @@ addGeneToSceneButton.addEventListener('click', () => {
         if (multiGeneSelections.length === 0) {
             geneSelect.disabled = false;
 
-            // ✅ Reset all discs to default color
             for (let i = 0; i < barcodeList.length; i++) {
                 const discIndex = discs.findIndex(d => d.userData.id === barcodeList[i]);
                 if (discIndex !== -1) {
@@ -941,9 +949,7 @@ function updateSceneWithMultiGeneColors() {
             const ratio = (value - min) / (max - min);
             const clamped = Math.max(0, Math.min(1, ratio));
     
-            console.log(`Gene: ${multiGeneSelections[g].name}, Spot ${barcode}, Expr=${value.toFixed(3)}, Ratio=${clamped.toFixed(3)}`);
-    
-            if (clamped > 0.1) {
+            if (clamped > 0.3) {
                 const color = multiGeneSelections[g].color;
                 activeColors.push(color);
                 portions.push(1);
@@ -952,16 +958,11 @@ function updateSceneWithMultiGeneColors() {
     
         if (activeColors.length > 0) {
             const total = portions.reduce((a, b) => a + b, 0);
-            if (Math.abs(total - 1) > 0.01) {
-                console.warn(`⚠️ Pie portions do not sum to 1 (total = ${total}) at barcode ${barcode}`);
-            }
-    
-            console.log(`Coloring disc at barcode ${barcode} with ${activeColors.length} slice(s):`, activeColors.map(c => c.toString(16)));
     
             const normalized = portions.map(p => p / total);
             colorPieDisc(discIndex, activeColors, normalized);
         } else {
-            colorPieDisc(discIndex, [0x4B0082], [1.0]); // fallback default
+            colorPieDisc(discIndex, [0x4B0082], [1.0]);
         }
     }
     
