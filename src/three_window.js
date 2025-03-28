@@ -771,62 +771,7 @@ function hideCrosshair() {
 /**
  * -----------------------------------------------------------------TEST ROOF-------------------------------------------------------------------------------------------------------
  */
-/*
-function colorMultipleGeneSets() {
-    const genes = ['Crispld1', 'Tcea1','Snhg6'];
-    const geneColors = [0xff0000, 0xffff00]; // red, yellow
-    const threshold = 0.1;
 
-    const geneIndices = genes.map(g => geneList.indexOf(g));
-    if (geneIndices.some(idx => idx === -1)) {
-        console.warn("One or more genes not found.");
-        return;
-    }
-
-    const expressedMap = geneIndices.map(() => Array(featureMatrix[0].length).fill(false));
-
-    for (let g = 0; g < geneIndices.length; g++) {
-        const row = featureMatrix[geneIndices[g]];
-        for (let i = 0; i < row.length; i++) {
-            if (row[i] > threshold) expressedMap[g][i] = true;
-        }
-    }
-
-    for (let i = 0; i < barcodeList.length; i++) {
-        const barcode = barcodeList[i];
-        const discIndex = discs.findIndex(d => d.userData.id === barcode);
-        if (discIndex === -1) continue;
-
-        const activeColors = [];
-        const portions = [];
-
-        for (let g = 0; g < expressedMap.length; g++) {
-            if (expressedMap[g][i]) {
-                activeColors.push(geneColors[g]);
-                portions.push(1); // Equal portions
-            }
-        }
-
-        if (activeColors.length > 1) {
-            console.log(`Pie disc at ${barcode} with colors:`, activeColors);
-        }
-
-        if (activeColors.length > 0) {
-            const sum = portions.reduce((a, b) => a + b, 0);
-            const normalized = portions.map(p => p / sum);
-            colorPieDisc(discIndex, activeColors, normalized);
-        }
-    }
-}
-
-
-document.getElementById('multi-gene-button').addEventListener('click', () => {
-    const multiGeneCheckbox = document.getElementById('multi-gene-checkbox');
-    if (multiGeneCheckbox.checked) {
-        colorMultipleGeneSets();
-    }
-});
-*/
 const MAX_MULTI_GENES = 5;
 const MULTI_GENE_COLORS = [0xff0000, 0x0000ff, 0x00ff00, 0xffff00, 0xffffff];
 const MULTI_GENE_COLOR_NAMES = ['Red', 'Blue', 'Green', 'Yellow', 'White'];
@@ -839,81 +784,86 @@ const multiGeneSelectedList = document.getElementById('selected-genes-list');
 //const geneDropdown = document.getElementById('gene-select');
 
 multiGeneCheckbox.addEventListener('change', () => {
-  if (multiGeneCheckbox.checked) {
-    addGeneToSceneButton.style.display = 'inline-block';
-  } else {
-    addGeneToSceneButton.style.display = 'none';
-    multiGeneSelections = [];
-    multiGeneSelectedList.innerHTML = '';
-    //geneSelect.disabled = false;
-    geneSelect.dispatchEvent(new Event('change'));
+    if (multiGeneCheckbox.checked) {
+        addGeneToSceneButton.style.display = 'inline-block';
+    } else {
+        addGeneToSceneButton.style.display = 'none';
+        multiGeneSelections = [];
+        multiGeneSelectedList.innerHTML = '';
+        //geneSelect.disabled = false;
+        geneSelect.dispatchEvent(new Event('change'));
 
-  }
+    }
 });
 
 addGeneToSceneButton.addEventListener('click', () => {
-  const selectedGeneName = geneSelect.value;
-  if (!selectedGeneName || multiGeneSelections.find(g => g.name === selectedGeneName)) return;
-  if (multiGeneSelections.length >= MAX_MULTI_GENES) {
-    alert('Maximum of 5 genes allowed.');
-    return;
-  }
+    const selectedGeneName = geneSelect.value;
+    if (!selectedGeneName || multiGeneSelections.find(g => g.name === selectedGeneName)) return;
+    if (multiGeneSelections.length >= MAX_MULTI_GENES) {
+        alert('Maximum of 5 genes allowed.');
+        return;
+    }
 
-  //geneSelect.disabled = true;
+    //geneSelect.disabled = true;
 
-  const color = MULTI_GENE_COLORS[multiGeneSelections.length];
-  multiGeneSelections.push({ name: selectedGeneName, color });
+    const color = MULTI_GENE_COLORS[multiGeneSelections.length];
+    multiGeneSelections.push({ name: selectedGeneName, color });
 
-  const listItem = document.createElement('li');
-  listItem.innerHTML = `<span style="color:${MULTI_GENE_COLOR_NAMES[multiGeneSelections.length - 1]}; font-weight:bold;">${selectedGeneName}</span> <button style="margin-left:10px;">X</button>`;
-  multiGeneSelectedList.appendChild(listItem);
+    const listItem = document.createElement('li');
+    listItem.innerHTML = `<span style="color:${MULTI_GENE_COLOR_NAMES[multiGeneSelections.length - 1]}; font-weight:bold;">${selectedGeneName}</span> <button style="margin-left:10px;">X</button>`;
+    multiGeneSelectedList.appendChild(listItem);
 
-  listItem.querySelector('button').addEventListener('click', () => {
-    multiGeneSelections = multiGeneSelections.filter(g => g.name !== selectedGeneName);
-    multiGeneSelectedList.removeChild(listItem);
-    if (multiGeneSelections.length === 0) geneDropdown.disabled = false;
+    listItem.querySelector('button').addEventListener('click', () => {
+        multiGeneSelections = multiGeneSelections.filter(g => g.name !== selectedGeneName);
+        multiGeneSelectedList.removeChild(listItem);
+        if (multiGeneSelections.length === 0) geneDropdown.disabled = false;
+        updateSceneWithMultiGeneColors();
+    });
+
     updateSceneWithMultiGeneColors();
-  });
-
-  updateSceneWithMultiGeneColors();
 });
 
 function updateSceneWithMultiGeneColors() {
-  const selectedIndices = multiGeneSelections.map(g => geneList.indexOf(g.name));
-  const geneExpressionPresence = multiGeneSelections.map(() => Array(featureMatrix[0].length).fill(false));
+    const minMaxPerGene = multiGeneSelections.map(selection => {
+        const expr = computeSpotExpressionFromMatrix(featureMatrix, geneList, [selection.name]);
+        const min = Math.min(...expr);
+        const max = Math.max(...expr);
+        return { expr, min, max };
+    });
 
-  for (let g = 0; g < selectedIndices.length; g++) {
-    const expressionRow = featureMatrix[selectedIndices[g]];
-    for (let i = 0; i < expressionRow.length; i++) {
-      if (expressionRow[i] > 0.1) geneExpressionPresence[g][i] = true;
+    for (let i = 0; i < barcodeList.length; i++) {
+        const barcode = barcodeList[i];
+        const discIndex = discs.findIndex(d => d.userData.id === barcode);
+        if (discIndex === -1) continue;
+
+        const activeColors = [];
+        const portions = [];
+
+        for (let g = 0; g < multiGeneSelections.length; g++) {
+            const { expr, min, max } = minMaxPerGene[g];
+            const value = expr[i];
+            const ratio = (value - min) / (max - min);
+            const clamped = Math.max(0, Math.min(1, ratio));
+
+            if (clamped > 0.4) {
+                const color = multiGeneSelections[g].color;
+                activeColors.push(color);
+                portions.push(1);
+            }
+        }
+
+        if (activeColors.length > 0) {
+            const total = portions.reduce((a, b) => a + b, 0);
+            const normalized = portions.map(p => p / total);
+            colorPieDisc(discIndex, activeColors, normalized);
+        } else {
+            colorPieDisc(discIndex, [0x4B0082], [1.0]); // fallback default
+        }
     }
-  }
-
-  for (let i = 0; i < barcodeList.length; i++) {
-    const barcode = barcodeList[i];
-    const discIndex = discs.findIndex(d => d.userData.id === barcode);
-    if (discIndex === -1) continue;
-
-    const activeColors = [];
-    const portions = [];
-
-    for (let g = 0; g < geneExpressionPresence.length; g++) {
-      if (geneExpressionPresence[g][i]) {
-        activeColors.push(multiGeneSelections[g].color);
-        portions.push(1);
-      }
-    }
-
-    if (activeColors.length > 0) {
-      const total = portions.reduce((a, b) => a + b);
-      const normalized = portions.map(p => p / total);
-      colorPieDisc(discIndex, activeColors, normalized);
-    } else {
-      // revert to default color if no gene expressed here
-      colorPieDisc(discIndex, [0x4B0082], [1.0]);
-    }
-  }
 }
+
+
+  
 
 
 /**
@@ -953,7 +903,7 @@ async function init() {
 
     console.log("Initialization done.");
     document.getElementById('loading-overlay').style.display = 'none';
-    alert("Initialization done.");
+    //alert("Initialization done.");
 }
 /**
  * ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
