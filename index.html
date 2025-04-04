@@ -1,148 +1,115 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Three.js Honeycomb</title>
-    <link rel="stylesheet" href="/styles.css" />
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-  </head>
-  <body>
-    <!-- Initializing Message-->
-    <div id="loading-overlay" style="
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(255,255,255,0.9);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 20px;
-        color: #333;
-        z-index: 1000;
-    ">
-        Initializing...
-    </div>
 
-    <!-- Container for Three.js render window -->
-    <div id="three-container"></div>
-    
-    <!-- Info Box for displaying disc data -->
-    <div id="single-cell-info-box" style="
-        position: absolute;
-        top: 550px;
-        left: 20px;
-        background-color: rgba(0, 0, 0, 0.7);
-        color: white;
-        padding: 8px;
-        border-radius: 5px;
-        display: none;
-        pointer-events: none;
-        font-size: 14px;
-    ">Hover over a disc to see details</div>
-    
-    <!-- Controls -->
-    <div id="controls">
-      <label for="cells-opacity-slider">Opacity:</label>
-      <input type="range" id="cells-opacity-slider" min="0" max="1" step="0.01" value="1">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tissue Cut Visualization</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
 
-      <label for="image-opacity-slider">Image Opacity:</label>
-      <input type="range" id="image-opacity-slider" min="0" max="1" step="0.01" value="1">
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+  <!-- Loading Overlay -->
+  <div id="loading-overlay"
+    class="fixed inset-0 flex items-center justify-center bg-white bg-opacity-90 z-50 text-lg text-gray-800">
+    Initializing...
+  </div>
 
-      <!-- New sliders for left, right and top, bottom clipping -->
-      <label for="left-clip-slider">Left Clip:</label>
-      <input type="range" id="left-clip-slider" min="100" max="1200" step="10" value="100">
-
-      <label for="right-clip-slider">Right Clip:</label>
-      <input type="range" id="right-clip-slider" min="100" max="1200" step="10" value="1200">
-
-      <label for="top-clip-slider">Top Clip:</label>
-      <input type="range" id="top-clip-slider" min="0" max="1200" step="10" value="1200">
-
-      <label for="bottom-clip-slider">Bottom Clip:</label>
-      <input type="range" id="bottom-clip-slider" min="0" max="1200" step="10" value="0">
-
-
-      <button id="reset-camera">Reset Camera</button>
-
-      <!-- Gene Selection Box-->
-      <div id="gene-selection-container">
-        <label for="gene-select">Select a Gene:</label>
-        <input type="text" id="gene-search" placeholder="Search">
-        <select id="gene-select" size="5"></select>
+  <div class="flex flex-col md:flex-row min-h-screen">
+    <!-- Sidebar Controls -->
+    <div id="controls" class="w-full md:w-1/4 p-4 bg-gray-800 space-y-4">
+      <div>
+        <label for="cells-opacity-slider" class="block text-sm mb-1">Cells Opacity</label>
+        <input type="range" id="cells-opacity-slider" min="0" max="1" step="0.01" value="1" class="w-full">
       </div>
 
-      <!--
-      <div style="margin-top: 10px;">
-        <input type="checkbox" id="multi-gene-checkbox">
-        <label for="multi-gene-checkbox"> Show multiple gene sets (Rp1 + Xkr4)</label>
-        <br>
-        <button id="multi-gene-button">Apply Multi-Gene Coloring</button>
+      <div>
+        <label for="image-opacity-slider" class="block text-sm mb-1">Image Opacity</label>
+        <input type="range" id="image-opacity-slider" min="0" max="1" step="0.01" value="1" class="w-full">
       </div>
-      -->
-      <div style="margin-top: 10px;">
-        <input type="checkbox" id="multi-gene-checkbox">
+
+      <div>
+        <label for="left-clip-slider" class="block text-sm mb-1">Left Clip</label>
+        <input type="range" id="left-clip-slider" min="100" max="1200" step="10" value="100" class="w-full">
+      </div>
+
+      <div>
+        <label for="right-clip-slider" class="block text-sm mb-1">Right Clip</label>
+        <input type="range" id="right-clip-slider" min="100" max="1200" step="10" value="1200" class="w-full">
+      </div>
+
+      <div>
+        <label for="top-clip-slider" class="block text-sm mb-1">Top Clip</label>
+        <input type="range" id="top-clip-slider" min="0" max="1200" step="10" value="1200" class="w-full">
+      </div>
+
+      <div>
+        <label for="bottom-clip-slider" class="block text-sm mb-1">Bottom Clip</label>
+        <input type="range" id="bottom-clip-slider" min="0" max="1200" step="10" value="0" class="w-full">
+      </div>
+
+      <button id="reset-camera" class="w-full py-2 bg-teal-600 hover:bg-teal-700 rounded text-white">Reset
+        Camera</button>
+
+      <div id="gene-selection-container" class="pt-4">
+        <label for="gene-select" class="block text-sm mb-1">Select a Gene:</label>
+        <input type="text" id="gene-search" placeholder="Search"
+          class="w-full mb-2 px-2 py-1 rounded bg-gray-700 border border-gray-600">
+        <select id="gene-select" size="5" class="w-full bg-gray-700 border border-gray-600 rounded"></select>
+      </div>
+
+      <div class="mt-4">
+        <input type="checkbox" id="multi-gene-checkbox" class="mr-2">
         <label for="multi-gene-checkbox"> Show multiple gene sets</label>
         <br>
-        <button id="add-gene-button" style="display:none;">Add Gene Set to Scene</button>
+        <button id="add-gene-button"
+          class="mt-2 w-full py-1 bg-blue-600 hover:bg-blue-700 rounded text-white hidden">Add Gene Set to
+          Scene</button>
       </div>
-      
-      <ul id="selected-genes-list" style="list-style-type: none; padding-left: 0;"></ul>
-      
 
+      <ul id="selected-genes-list" class="list-none pl-0 mt-2 space-y-1 text-sm"></ul>
     </div>
 
-    <!-- Gene Expression Color Scale (The color bar at right-top of page)-->
-    <div id="color-scale-container" style="
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background-color: rgba(255, 255, 255, 0.9);
-      border: 1px solid #aaa;
-      padding: 4px 8px;
-      font-family: sans-serif;
-      font-size: 12px;
-      z-index: 9999;
-      width: 220px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      ">
-      <div style="display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 4px;">
-        <span>Spot</span>
-        <span id="scale-gene-name" style="color: black;">Gene</span>
+    <!-- Main Container -->
+    <div class="flex-1 relative p-4">
+      <!-- Three.js Render Area -->
+      <div id="three-container" class="w-full h-[550px] bg-gray-700"></div>
+
+      <!-- Single Cell Info Box -->
+      <div id="single-cell-info-box"
+        class="absolute top-[580px] left-5 bg-black bg-opacity-70 text-white text-sm p-2 rounded pointer-events-none hidden">
+        Hover over a disc to see details
       </div>
-      <div style="
-        background: linear-gradient(to right, #4B0082, #CC66FF, #FF6666, #FFA500, #FFFF00);
-        height: 10px;
-        width: 100%;
-        margin-bottom: 4px;
-        border: 1px solid #888;
-      "></div>
-      <div style="display: flex; justify-content: space-between;">
-        <span id="scale-min">0.0</span>
-        <span id="scale-max">10.0</span>
+
+      <!-- Color Scale Container -->
+      <div id="color-scale-container"
+        class="absolute top-2 right-2 bg-white bg-opacity-90 border border-gray-400 text-gray-800 text-xs p-2 w-[220px] shadow">
+        <div class="flex justify-between font-bold mb-1">
+          <span>Spot</span>
+          <span id="scale-gene-name">Gene</span>
+        </div>
+        <div
+          class="h-[10px] w-full bg-gradient-to-r from-indigo-900 via-pink-400 via-red-400 via-orange-400 to-yellow-400 mb-1 border border-gray-500">
+        </div>
+        <div class="flex justify-between">
+          <span id="scale-min">0.0</span>
+          <span id="scale-max">10.0</span>
+        </div>
+      </div>
+
+      <!-- Spot Plot Container -->
+      <div id="spot-plot-container" class="relative w-full h-[300px] mt-6">
+        <div id="spot-plot" class="w-full h-full"></div>
+        <div id="locked-spot-info"
+          class="absolute bottom-1 left-1 bg-black bg-opacity-80 text-white text-xs p-2 rounded hidden pointer-events-none z-10">
+        </div>
       </div>
     </div>
+  </div>
 
-    <!-- Spot Table and the Infor Box-->
-    <div id="spot-plot-container" style="position:absolute; top:700px; left:600px; width:600px; height:300px;">
-      <div id="spot-plot" style="width:100%; height:100%;"></div>
-      <div id="locked-spot-info" style="
-          position: absolute;
-          bottom: 5px;
-          left: 5px;
-          background: rgba(0, 0, 0, 0.8);
-          color: white;
-          padding: 6px 10px;
-          border-radius: 4px;
-          font-size: 13px;
-          display: none;
-          pointer-events: none;
-          z-index: 10;
-      "></div>
-    </div>
+  <!-- Main Script -->
+  <script type="module" src="/src/three_window.js"></script>
+</body>
 
-    <script type="module" src="/src/three_window.js"></script>
-  </body>
 </html>

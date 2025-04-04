@@ -77,7 +77,7 @@ const geneSelect = document.getElementById('gene-select');
 
 //Set up the gene selection menu
 function populateGeneDropdown(genes) {
-    geneSelect.innerHTML = ''; 
+    geneSelect.innerHTML = '';
     genes.forEach(gene => {
         const option = document.createElement('option');
         option.value = gene;
@@ -142,7 +142,7 @@ function createSpotIndexPlot(discs) {
     const plotDiv = document.getElementById('spot-plot');
 
     //Hover only update if NOT locked
-    plotDiv.on('plotly_hover', function(data){
+    plotDiv.on('plotly_hover', function (data) {
         if (!crosshairLocked) {
             const index = data.points[0].pointIndex;
             const disc = visibleDiscs[index];
@@ -153,14 +153,14 @@ function createSpotIndexPlot(discs) {
     });
 
     //Unhover only hide if NOT locked
-    plotDiv.on('plotly_unhover', function(){
+    plotDiv.on('plotly_unhover', function () {
         if (!crosshairLocked) {
             hideCrosshair();
         }
     });
 
     // Left click: lock cross line and info box on screen
-    plotDiv.on('plotly_click', function(data){
+    plotDiv.on('plotly_click', function (data) {
         const index = data.points[0].pointIndex;
         const disc = visibleDiscs[index];
         if (disc) {
@@ -175,7 +175,7 @@ function createSpotIndexPlot(discs) {
     });
 
     //Right click: unlock crosshair and hide info box
-    plotDiv.addEventListener('contextmenu', function(e) {
+    plotDiv.addEventListener('contextmenu', function (e) {
         e.preventDefault();
         crosshairLocked = false;
         hideCrosshair();
@@ -203,8 +203,8 @@ let rotateFactor = 0.005
 let moveFactor = 1
 let zoomFactor = 0.2
 
-const minRotation = -Math.PI/4;
-const maxRotation = Math.PI/4;
+const minRotation = -Math.PI / 4;
+const maxRotation = Math.PI / 4;
 const minZoomZ = 10;
 const maxZoomZ = 700;
 const minPositionX = 100;
@@ -214,7 +214,7 @@ const maxPositionY = 1200;
 
 //Camera initialization
 //const initialCameraPosition = {x:9000,y:9000,z:10000}
-const initialCameraPosition = {x:9000*0.07,y:9000*0.07,z:10000*0.07}
+const initialCameraPosition = { x: 9000 * 0.07, y: 9000 * 0.07, z: 10000 * 0.07 }
 camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
 
 // Prevent page scrolling on wheel when hovering over Three.js window
@@ -305,7 +305,7 @@ bottomClipSlider.addEventListener('input', updateClipping);
 
 //Load cell info when mouse hover over each disc/cell.
 container.addEventListener('mousemove', (event) => {
-    raycaster.params.Mesh.threshold = 5; 
+    raycaster.params.Mesh.threshold = 5;
     //raycaster.far = 10000;
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -395,14 +395,14 @@ function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z:
     textureLoader.load(imagePath, function (texture) {
         texture.wrapS = THREE.RepeatWrapping;
         texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.y = -1; 
+        texture.repeat.y = -1;
 
         const planeGeometry = new THREE.PlaneGeometry(width, height);
-        const planeMaterial = new THREE.MeshBasicMaterial({ 
-            map: texture, 
+        const planeMaterial = new THREE.MeshBasicMaterial({
+            map: texture,
             transparent: true,
             opacity: 1.0,
-        }); 
+        });
 
         tissueImageMesh = new THREE.Mesh(planeGeometry, planeMaterial);
         tissueImageMesh.position.set(position.x, position.y, position.z);
@@ -494,7 +494,7 @@ async function createDiscsFromCSV(csvFilePath, numLines, scaleFactor = 0.07) {
     const text = await response.text();
     const rows = text.split('\n').slice(1);
 
-    const discMaterial = new THREE.MeshBasicMaterial({ color: 0x4B0082, side: THREE.DoubleSide, transparent: true});
+    const discMaterial = new THREE.MeshBasicMaterial({ color: 0x4B0082, side: THREE.DoubleSide, transparent: true });
 
     let validRows = rows.filter(row => {
         const values = row.split(',').map(value => value.trim());
@@ -939,37 +939,37 @@ function updateSceneWithMultiGeneColors() {
         const barcode = barcodeList[i];
         const discIndex = discs.findIndex(d => d.userData.id === barcode);
         if (discIndex === -1) continue;
-    
+
         const activeColors = [];
         const portions = [];
-    
+
         for (let g = 0; g < multiGeneSelections.length; g++) {
             const { expr, min, max } = minMaxPerGene[g];
             const value = expr[i];
             const ratio = (value - min) / (max - min);
             const clamped = Math.max(0, Math.min(1, ratio));
-    
+
             if (clamped > 0.3) {
                 const color = multiGeneSelections[g].color;
                 activeColors.push(color);
                 portions.push(1);
             }
         }
-    
+
         if (activeColors.length > 0) {
             const total = portions.reduce((a, b) => a + b, 0);
-    
+
             const normalized = portions.map(p => p / total);
             colorPieDisc(discIndex, activeColors, normalized);
         } else {
             colorPieDisc(discIndex, [0x4B0082], [1.0]);
         }
     }
-    
+
 }
 
 
-  
+
 
 
 /**
@@ -987,9 +987,9 @@ async function init() {
 
     console.log("Loading tissue cut image..");
     // loadImage(tissueImage, 17039.5, 17500, { x: 8495.5, y: 8601.5, z: -1 });
-    loadImage(tissueImage, 17039.5*0.07, 17500*0.07, { x: 8495.5*0.07, y: 8601.5*0.07, z: -10 });
+    loadImage(tissueImage, 17039.5 * 0.07, 17500 * 0.07, { x: 8495.5 * 0.07, y: 8601.5 * 0.07, z: -10 });
     //loadImageWithAlignment(tissueImage, SpotPositionsPath);
-    console.log("Tissue cut image loaded."); 
+    console.log("Tissue cut image loaded.");
 
     console.log("Loading files..");
     ({ geneList } = await loadGeneExpressionData('../data/ClusterGeneExpression.csv'));
