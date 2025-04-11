@@ -721,7 +721,6 @@ const colorPieDisc = (index, colors, portions) => {
         oldDisc.material?.dispose();
     }
 
-    // ✅ Correct and safe radius fallback
     let oldRadius = oldDisc.userData?.radius;
     if (typeof oldRadius !== 'number' || isNaN(oldRadius)) {
         oldRadius = 0.5;
@@ -729,7 +728,7 @@ const colorPieDisc = (index, colors, portions) => {
 
     // === Single-color disc ===
     if (colors.length === 1) {
-        const material = new THREE.MeshBasicMaterial({ color: colors[0], side: THREE.DoubleSide });
+        const material = new THREE.MeshBasicMaterial({ color: colors[0], side: THREE.DoubleSide,transparent: true,depthWrite: true,});
         const disc = new THREE.Mesh(
             new THREE.CylinderGeometry(oldRadius, oldRadius, 0.1, 32),
             material
@@ -740,6 +739,7 @@ const colorPieDisc = (index, colors, portions) => {
             id: oldDisc.userData.id,
             radius: oldRadius
         };
+        disc.renderOrder = 1;
 
         scene.add(disc);
         discs[index] = disc;
@@ -766,7 +766,8 @@ const colorPieDisc = (index, colors, portions) => {
         shape.lineTo(0, 0);
 
         const geometry = new THREE.ShapeGeometry(shape);
-        const material = new THREE.MeshBasicMaterial({ color: colors[i], side: THREE.DoubleSide });
+        const material = new THREE.MeshBasicMaterial({ color: colors[i], side: THREE.DoubleSide,transparent: true,depthWrite: true, });
+        
         const mesh = new THREE.Mesh(geometry, material);
         mesh.rotation.x = Math.PI;
         group.add(mesh);
@@ -780,7 +781,7 @@ const colorPieDisc = (index, colors, portions) => {
         id: oldDisc.userData.id,
         radius: oldRadius
     };
-
+    group.renderOrder = 1;
     scene.add(group);
     discs[index] = group;
 };
