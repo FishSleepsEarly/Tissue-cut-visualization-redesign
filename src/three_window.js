@@ -224,10 +224,7 @@ const maxVerticalAngle = Math.PI / 2; // 90 degrees
 const initialCameraPosition = { x: 9000 * 0.07, y: 9000 * 0.07, z: 10000 * 0.07 }
 camera.position.set(initialCameraPosition.x, initialCameraPosition.y, initialCameraPosition.z);
 
-// Prevent page scrolling on wheel when hovering over Three.js window
-container.addEventListener('wheel', (event) => {
-    event.preventDefault();
-}, { passive: false });
+
 
 //Camera reset
 const resetCamera = () => {
@@ -300,10 +297,42 @@ container.addEventListener('mousemove', (event) => {
 });
 
 // Camera zoom in
+/*
 container.addEventListener('wheel', (event) => {
     camera.position.z += event.deltaY * zoomFactor;
     camera.position.z = Math.max(minZoomZ, Math.min(maxZoomZ, camera.position.z));
 });
+
+// Prevent page scrolling on wheel when hovering over Three.js window
+container.addEventListener('wheel', (event) => {
+    event.preventDefault();
+}, { passive: false });
+
+*/
+container.addEventListener('wheel', (event) => {
+    event.preventDefault();
+
+    // Calculate vector from camera to rotation center
+    const toCenter = new THREE.Vector3().subVectors(rotationCenter, camera.position);
+    const currentDistance = toCenter.length();
+
+    // Normalize the direction vector
+    const zoomDir = toCenter.normalize();
+
+    // Define zoom amount (invert for intuitive scroll direction)
+    const zoomAmount = event.deltaY * zoomFactor;
+
+    // Clamp new distance
+    const newDistance = THREE.MathUtils.clamp(currentDistance + zoomAmount, minZoomZ, maxZoomZ);
+
+    // Calculate new camera position along zoom direction
+    const newCameraPos = new THREE.Vector3().copy(rotationCenter).addScaledVector(zoomDir, -newDistance);
+    camera.position.copy(newCameraPos);
+
+    // Make camera keep facing the center
+    camera.lookAt(rotationCenter);
+}, { passive: false });
+
 
 container.addEventListener('contextmenu', (event) => event.preventDefault());
 
@@ -439,10 +468,12 @@ function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z:
             transparent: true,
             opacity: 1.0,
             side: THREE.DoubleSide,
+            depthWrite: false,
         });
 
         tissueImageMesh = new THREE.Mesh(planeGeometry, planeMaterial);
         tissueImageMesh.position.set(position.x, position.y, position.z);
+        tissueImageMesh.renderOrder = 0;
         scene.add(tissueImageMesh);
     });
 }
@@ -531,7 +562,7 @@ async function createDiscsFromCSV(csvFilePath, numLines, scaleFactor = 0.07) {
     const text = await response.text();
     const rows = text.split('\n').slice(1);
 
-    const discMaterial = new THREE.MeshBasicMaterial({ color: 0x4B0082, side: THREE.DoubleSide, transparent: true });
+    const discMaterial = new THREE.MeshBasicMaterial({ color: 0x4B0082, side: THREE.DoubleSide, transparent: true,depthWrite: true, });
 
     let validRows = rows.filter(row => {
         const values = row.split(',').map(value => value.trim());
@@ -551,6 +582,8 @@ async function createDiscsFromCSV(csvFilePath, numLines, scaleFactor = 0.07) {
 
         disc.rotation.x = Math.PI / 2;
         disc.position.set(parseFloat(x) * scaleFactor, parseFloat(y) * scaleFactor, 0);
+
+        disc.renderOrder = 1;
 
         disc.userData.id = barcode;
         disc.userData.radius = parseFloat(radius) * scaleFactor;
