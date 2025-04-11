@@ -199,7 +199,7 @@ let isRightMouseDown = false;
 let lastMouseX = 0;
 let lastMouseY = 0;
 
-let rotateFactor = 0.005
+let rotateFactor = 0.01
 let moveFactor = 1
 let zoomFactor = 0.2
 
@@ -211,6 +211,13 @@ const minPositionX = 100;
 const maxPositionX = 1200;
 const minPositionY = 0;
 const maxPositionY = 1200;
+const centerX = (minPositionX + maxPositionX) / 2;
+const centerY = (minPositionY + maxPositionY) / 2;
+const rotationCenter = new THREE.Vector3(centerX, centerY, 0);
+
+let verticalAngle = 0;
+const maxVerticalAngle = Math.PI / 2; // 90 degrees
+
 
 //Camera initialization
 //const initialCameraPosition = {x:9000,y:9000,z:10000}
@@ -248,11 +255,40 @@ container.addEventListener('mousemove', (event) => {
     lastMouseY = event.clientY;
 
     if (isLeftMouseDown) {
+        /*
         camera.rotation.y -= deltaX * rotateFactor;
         camera.rotation.x -= deltaY * rotateFactor;
 
         camera.rotation.x = Math.max(minRotation, Math.min(maxRotation, camera.rotation.x));
         camera.rotation.y = Math.max(minRotation, Math.min(maxRotation, camera.rotation.y));
+        */
+        const angleY = -(deltaX * rotateFactor); // horizontal rotation
+        const angleX = -(deltaY * rotateFactor); // vertical rotation
+
+        // Get direction vector from center to camera
+        const offset = new THREE.Vector3().copy(camera.position).sub(rotationCenter);
+
+        // === Horizontal rotation (around Z in your 2D layout)
+        const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angleY);
+        offset.applyQuaternion(qY);
+
+        // === Vertical rotation (around camera's current right vector)
+        const right = new THREE.Vector3();
+        camera.getWorldDirection(right);
+        right.cross(camera.up).normalize();
+
+        const qX = new THREE.Quaternion().setFromAxisAngle(right, angleX);
+        offset.applyQuaternion(qX);
+
+        // Set new camera position and orientation
+        camera.position.copy(rotationCenter).add(offset);
+
+        // Update "up" vector manually so camera doesn't auto-flip
+        camera.up.applyQuaternion(qX).normalize();
+        camera.up.applyQuaternion(qY).normalize();
+
+        // Now manually face the center
+        camera.lookAt(rotationCenter);
     }
     if (isRightMouseDown) {
         camera.position.x -= deltaX * moveFactor;
@@ -402,6 +438,7 @@ function loadImage(imagePath, width = 4, height = 4, position = { x: 0, y: 0, z:
             map: texture,
             transparent: true,
             opacity: 1.0,
+            side: THREE.DoubleSide,
         });
 
         tissueImageMesh = new THREE.Mesh(planeGeometry, planeMaterial);
@@ -829,6 +866,13 @@ function updateCrosshair(x, y) {
 function hideCrosshair() {
     crosshairX.visible = false;
     crosshairY.visible = false;
+}
+
+function rotateAroundPoint(object, point, axis, theta) {
+    object.position.sub(point); // translate to origin
+    object.position.applyAxisAngle(axis, theta); // rotate
+    object.position.add(point); // translate back
+    object.lookAt(point); // make camera face the center
 }
 /**
  * ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
