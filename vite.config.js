@@ -11,7 +11,7 @@ export default defineConfig({
   // (Though typically, you'd place your source in a `src/` folder)
   build: {
     rollupOptions: {
-      input: '/src/vtk_window.js',
+      input: '/src/three_window.js',
       // or point to your main JS entry if you restructure
     },
     outDir: 'dist',  // The folder where production build files will go
